@@ -1,0 +1,44 @@
+syntax="proto3";
+
+package api;
+option java_package = "com.github.wenweihu86.distmq.client.api";
+option java_outer_classname = "BrokerMessage";
+
+enum ResCode {
+    RES_CODE_SUCCESS = 0;
+    RES_CODE_FAIL = 1;
+}
+
+message BaseResponse {
+    ResCode res_code = 1;
+    string res_msg = 2;
+}
+
+message MessageContent {
+    string topic = 1;
+    int32 queue = 2;
+    int64 offset = 3;
+    bytes content = 4;
+}
+
+message SendMessageRequest {
+    string topic = 1;
+    int32 queue = 2;
+    bytes content = 3;
+}
+
+message SendMessageResponse {
+    BaseResponse base_res = 1;
+}
+
+message PullMessageRequest {
+    string topic = 1;
+    int32 queue = 2;
+    string consumer_group = 3;
+    int32 message_count = 4;
+}
+
+message PullMessageResponse {
+    BaseResponse base_res = 1;
+    repeated MessageContent contents = 2;
+}
