@@ -1,5 +1,6 @@
 package com.github.wenweihu86.distmq.broker.log;
 
+import com.github.wenweihu86.distmq.broker.BrokerUtils;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +18,8 @@ import java.nio.channels.FileChannel;
  * Created by wenweihu86 on 2017/6/19.
  */
 public class Segment {
-    public static int HEADER_LENGTH = Long.SIZE / Byte.SIZE;
+    public static int SEGMENT_HEADER_LENGTH = Long.SIZE / Byte.SIZE;
+    public static int MESSAGE_HEADER_LENGTH = (Long.SIZE + Integer.SIZE) / Byte.SIZE;
     private static final Logger LOG = LoggerFactory.getLogger(Segment.class);
 
     private String dirName;
@@ -77,16 +79,21 @@ public class Segment {
         long offset = 0;
         try {
             int writeSize;
+            // TODO: 复用messageContent内存
+            ByteBuffer byteBuffer = ByteBuffer.allocate(Segment.SEGMENT_HEADER_LENGTH
+                    + Segment.MESSAGE_HEADER_LENGTH +  + messageContent.length);
             if (fileSize == 0) {
-                // TODO: 复用messageContent内存
-                ByteBuffer byteBuffer = ByteBuffer.allocate(Segment.HEADER_LENGTH + messageContent.length);
                 byteBuffer.putLong(System.currentTimeMillis());
+                byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
+                byteBuffer.putInt(messageContent.length);
                 byteBuffer.put(messageContent);
                 writeSize = channel.write(byteBuffer);
                 endOffset += writeSize;
                 offset = startOffset;
             } else {
-                ByteBuffer byteBuffer = ByteBuffer.wrap(messageContent);
+                byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
+                byteBuffer.putInt(messageContent.length);
+                byteBuffer.put(messageContent);
                 writeSize = channel.write(byteBuffer);
                 offset = endOffset;
                 endOffset += writeSize;
@@ -96,6 +103,39 @@ public class Segment {
             LOG.warn("append message exception:", ex);
         }
         return offset;
+    }
+
+    public byte[] read(long offset) {
+        if (offset >= startOffset + fileSize) {
+            LOG.warn("invalid offset={}", offset);
+            return null;
+        }
+        try {
+            channel.position(offset - startOffset);
+            ByteBuffer headerBuffer = ByteBuffer.allocate(MESSAGE_HEADER_LENGTH);
+            int readLen = channel.read(headerBuffer);
+            if (readLen < MESSAGE_HEADER_LENGTH) {
+                LOG.warn("read message error");
+                return null;
+            }
+            long crc32 = headerBuffer.getLong();
+            int messageLen = headerBuffer.getInt();
+            ByteBuffer messageContentBuffer = ByteBuffer.allocate(messageLen);
+            readLen = channel.read(messageContentBuffer);
+            if (readLen < messageLen) {
+                LOG.warn("read message error");
+                return null;
+            }
+            if (BrokerUtils.getCRC32(messageContentBuffer.array()) != crc32) {
+                LOG.warn("read message error: crc32 check failed");
+                return null;
+            }
+            return messageContentBuffer.array();
+        } catch (IOException ex) {
+            LOG.warn("read segment error, dir={}, file={}, offset={}",
+                    dirName, fileName, offset);
+            return null;
+        }
     }
 
     public String getDirName() {

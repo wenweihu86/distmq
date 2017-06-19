@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 
 /**
@@ -50,7 +51,7 @@ public class SegmentedLog {
                 if (!lastSegment.isCanWrite()) {
                     isNeedNewSegmentFile = true;
                 } else {
-                    int maxSegmentSize = GlobalConf.getInstance().getInt("max_segment_size");
+                    int maxSegmentSize = GlobalConf.getInstance().getMaxSegmentSize();
                     if (lastSegment.getFileSize() + messageContent.length > maxSegmentSize) {
                         isNeedNewSegmentFile = true;
                     }
@@ -75,7 +76,7 @@ public class SegmentedLog {
             // 新建segment文件
             if (isNeedNewSegmentFile) {
                 // open new segment file
-                long newStartOffset = getLastEndOffset() + Segment.HEADER_LENGTH;
+                long newStartOffset = getLastEndOffset() + Segment.SEGMENT_HEADER_LENGTH;
                 String newSegmentFileName = String.format("open-%d", newStartOffset);
                 String newFullFileName = segmentDir + File.separator + newSegmentFileName;
                 File newSegmentFile = new File(newFullFileName);
@@ -92,6 +93,16 @@ public class SegmentedLog {
         }
     }
 
+    public byte[] read(long offset) {
+        Map.Entry<Long, Segment> entry = startOffsetSegmentMap.floorEntry(offset);
+        if (entry == null) {
+            LOG.warn("message not found, offset={}", offset);
+            return null;
+        }
+        Segment segment = entry.getValue();
+        return segment.read(offset);
+    }
+
     public void readSegments() {
         List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir);
         for (String fileName: fileNames) {
@@ -103,7 +114,8 @@ public class SegmentedLog {
     public void validateSegments() {
         long lastEndOffset = 0;
         for (Segment segment : startOffsetSegmentMap.values()) {
-            if (lastEndOffset > 0 && segment.getStartOffset() != lastEndOffset + Segment.HEADER_LENGTH) {
+            if (lastEndOffset > 0 && segment.getStartOffset()
+                    != lastEndOffset + Segment.SEGMENT_HEADER_LENGTH) {
                 throw new RuntimeException("segment dir not valid:" + segmentDir);
             }
             lastEndOffset = segment.getEndOffset();

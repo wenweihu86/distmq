@@ -20,7 +20,7 @@ public class BrokerMain {
         GlobalConf conf = GlobalConf.getInstance();
         RaftMessage.Server localServer = conf.getLocalServer();
         List<RaftMessage.Server> servers = conf.getServers();
-        String dataDir = conf.getString("data_dir");
+        String dataDir = conf.getDataDir();
 
         // 初始化RPCServer
         RPCServer server = new RPCServer(localServer.getEndPoint().getPort());

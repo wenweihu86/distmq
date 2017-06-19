@@ -17,11 +17,19 @@ public class GlobalConf {
     private static GlobalConf instance;
 
     private Toml toml;
+    RaftMessage.Server localServer; // 本机节点
+    List<RaftMessage.Server> servers; // 集群所有节点
+    private String dataDir; // 数据目录
+    private int maxSegmentSize; // 单个segment文件最大大小
 
     public GlobalConf() {
         String fileName = "/broker.toml";
         File file = new File(getClass().getResource(fileName).getFile());
         toml = new Toml().read(file);
+        localServer = readLocalServer();
+        servers = readServers();
+        dataDir = toml.getString("data_dir");
+        maxSegmentSize = toml.getLong("max_segment_size").intValue();
     }
 
     public static GlobalConf getInstance() {
@@ -31,15 +39,7 @@ public class GlobalConf {
         return instance;
     }
 
-    public String getString(String key) {
-        return toml.getString(key);
-    }
-
-    public int getInt(String key) {
-        return toml.getLong(key).intValue();
-    }
-
-    public RaftMessage.Server getLocalServer() {
+    private RaftMessage.Server readLocalServer() {
         RaftMessage.Server.Builder serverBuilder = RaftMessage.Server.newBuilder();
         RaftMessage.EndPoint.Builder endPointBuilder = RaftMessage.EndPoint.newBuilder();
         Toml localServerConf = toml.getTable("local_server");
@@ -52,7 +52,7 @@ public class GlobalConf {
         return localServer;
     }
 
-    public List<RaftMessage.Server> getServers() {
+    private List<RaftMessage.Server> readServers() {
         List<RaftMessage.Server> servers = new ArrayList<>();
         List<Toml> serverConfList = toml.getTables("servers");
         for (Toml serverConf : serverConfList) {
@@ -68,6 +68,22 @@ public class GlobalConf {
             servers.add(server);
         }
         return servers;
+    }
+
+    public RaftMessage.Server getLocalServer() {
+        return localServer;
+    }
+
+    public List<RaftMessage.Server> getServers() {
+        return servers;
+    }
+
+    public String getDataDir() {
+        return dataDir;
+    }
+
+    public int getMaxSegmentSize() {
+        return maxSegmentSize;
     }
 
 }
