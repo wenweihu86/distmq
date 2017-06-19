@@ -35,6 +35,10 @@ public class GlobalConf {
         return toml.getString(key);
     }
 
+    public int getInt(String key) {
+        return toml.getLong(key).intValue();
+    }
+
     public RaftMessage.Server getLocalServer() {
         RaftMessage.Server.Builder serverBuilder = RaftMessage.Server.newBuilder();
         RaftMessage.EndPoint.Builder endPointBuilder = RaftMessage.EndPoint.newBuilder();
