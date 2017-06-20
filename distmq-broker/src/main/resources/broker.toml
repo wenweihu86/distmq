@@ -1,4 +1,5 @@
 data_dir = "./data"
+default_queue_num_per_topic = 8
 max_segment_size = 100000000 # 100m
 
 [local_server]
