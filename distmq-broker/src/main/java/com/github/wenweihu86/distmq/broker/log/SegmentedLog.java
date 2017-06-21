@@ -1,6 +1,6 @@
 package com.github.wenweihu86.distmq.broker.log;
 
-import com.github.wenweihu86.distmq.broker.GlobalConf;
+import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

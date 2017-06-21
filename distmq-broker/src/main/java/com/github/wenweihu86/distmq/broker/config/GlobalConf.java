@@ -1,5 +1,7 @@
-package com.github.wenweihu86.distmq.broker;
+package com.github.wenweihu86.distmq.broker.config;
 
+import com.github.wenweihu86.distmq.broker.BrokerUtils;
+import com.github.wenweihu86.distmq.client.zk.ZKConf;
 import com.github.wenweihu86.raft.proto.RaftMessage;
 import com.moandjiezana.toml.Toml;
 import org.slf4j.Logger;
@@ -22,6 +24,9 @@ public class GlobalConf {
     private String dataDir; // 数据目录
     private int defaultQueueNumPerTopic; // 每个topic的默认queue个数
     private int maxSegmentSize; // 单个segment文件最大大小
+    // 该server属于哪个分片集群，每个分片是leader/followers的raft集群
+    private int shardingId;
+    private ZKConf zkConf;
 
     public GlobalConf() {
         String fileName = "/broker.toml";
@@ -32,6 +37,8 @@ public class GlobalConf {
         dataDir = toml.getString("data_dir");
         defaultQueueNumPerTopic = toml.getLong("default_queue_num_per_topic").intValue();
         maxSegmentSize = toml.getLong("max_segment_size").intValue();
+        shardingId = toml.getLong("sharding_id").intValue();
+        zkConf = readZKConf();
     }
 
     public static GlobalConf getInstance() {
@@ -72,6 +79,17 @@ public class GlobalConf {
         return servers;
     }
 
+    private ZKConf readZKConf() {
+        zkConf = new ZKConf();
+        zkConf.setServers(toml.getString("servers"));
+        zkConf.setConnectTimeoutMs(toml.getLong("connect_timeout_ms").intValue());
+        zkConf.setSessionTimeoutMs(toml.getLong("session_timeout_ms").intValue());
+        zkConf.setRetryCount(toml.getLong("retry_count").intValue());
+        zkConf.setRetryIntervalMs(toml.getLong("retry_interval_ms").intValue());
+        zkConf.setBasePath(toml.getString("base_path"));
+        return zkConf;
+    }
+
     public RaftMessage.Server getLocalServer() {
         return localServer;
     }
@@ -90,6 +108,14 @@ public class GlobalConf {
 
     public int getMaxSegmentSize() {
         return maxSegmentSize;
+    }
+
+    public int getShardingId() {
+        return shardingId;
+    }
+
+    public ZKConf getZkConf() {
+        return zkConf;
     }
 
 }

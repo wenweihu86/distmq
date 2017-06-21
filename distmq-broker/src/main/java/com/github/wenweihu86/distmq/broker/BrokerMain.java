@@ -1,5 +1,6 @@
 package com.github.wenweihu86.distmq.broker;
 
+import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.RaftOptions;
 import com.github.wenweihu86.raft.proto.RaftMessage;

@@ -1,5 +1,6 @@
 package com.github.wenweihu86.distmq.broker;
 
+import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.broker.log.LogManager;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.raft.StateMachine;

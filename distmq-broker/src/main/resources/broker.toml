@@ -1,6 +1,16 @@
 data_dir = "./data"
 default_queue_num_per_topic = 8
 max_segment_size = 100000000 # 100m
+# 该server属于哪个分片集群，每个分片是leader/followers的raft集群
+sharding_id = 1
+
+[zookeeper]
+servers = "127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183"
+connect_timeout_ms = 500
+session_timeout_ms = 5000
+retry_count = 3
+retry_interval_ms = 1000
+base_path = "/distmq"
 
 [local_server]
 ip = "127.0.0.1"
