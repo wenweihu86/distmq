@@ -3,6 +3,7 @@ package com.github.wenweihu86.distmq.broker;
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.broker.log.LogManager;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
+import com.github.wenweihu86.distmq.client.zk.ZKData;
 import com.github.wenweihu86.raft.StateMachine;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * Created by wenweihu86 on 2017/6/17.
@@ -63,7 +65,6 @@ public class BrokerStateMachine implements StateMachine {
     public void apply(byte[] dataBytes) {
         try {
             BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.parseFrom(dataBytes);
-            // TODO: 找到segment log，写入消息
         } catch (Exception ex) {
             LOG.warn("apply exception:", ex);
         }
