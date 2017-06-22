@@ -26,6 +26,7 @@ public class BrokerStateMachine implements StateMachine {
 
     @Override
     public void writeSnapshot(String snapshotDir) {
+        // TODO:改成硬链接形式，提升速度和节省空间
         try {
             File messageDirFile = new File(messageDir);
             File snapshotDirFile = new File(snapshotDir);

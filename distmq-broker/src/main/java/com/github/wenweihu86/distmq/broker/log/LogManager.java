@@ -13,6 +13,7 @@ import java.util.Map;
 public class LogManager {
     private static final Logger LOG = LoggerFactory.getLogger(LogManager.class);
     private String logDir;
+    // topic -> (queueId -> segment log)
     private Map<String, Map<Integer, SegmentedLog>> topicLogMap;
 
     public LogManager(String logDir) {
