@@ -1,6 +1,7 @@
 package com.github.wenweihu86.distmq.broker.log;
 
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
+import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,7 +104,7 @@ public class SegmentedLog {
         return segment.read(offset);
     }
 
-    public void readSegments() {
+    private void readSegments() {
         List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir);
         for (String fileName: fileNames) {
             Segment segment = new Segment(segmentDir, fileName);
@@ -111,7 +112,7 @@ public class SegmentedLog {
         }
     }
 
-    public void validateSegments() {
+    private void validateSegments() {
         long lastEndOffset = 0;
         for (Segment segment : startOffsetSegmentMap.values()) {
             if (lastEndOffset > 0 && segment.getStartOffset()

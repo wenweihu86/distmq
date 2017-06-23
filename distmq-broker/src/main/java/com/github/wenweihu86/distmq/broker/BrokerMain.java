@@ -1,6 +1,8 @@
 package com.github.wenweihu86.distmq.broker;
 
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
+import com.github.wenweihu86.distmq.client.zk.ZKClient;
+import com.github.wenweihu86.distmq.client.zk.ZKConf;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.RaftOptions;
 import com.github.wenweihu86.raft.proto.RaftMessage;
@@ -43,6 +45,14 @@ public class BrokerMain {
         // 启动RPCServer，初始化Raft节点
         server.start();
         raftNode.init();
+        // 注册zk
+        ZKConf zkConf = conf.getZkConf();
+        ZKClient zkClient = new ZKClient(zkConf);
+        zkClient.registerBroker(conf.getShardingId(),
+                conf.getLocalServer().getEndPoint().getHost(),
+                conf.getLocalServer().getEndPoint().getPort());
+        zkClient.subscribeBroker();
+        zkClient.subscribeTopic();
     }
 
 }

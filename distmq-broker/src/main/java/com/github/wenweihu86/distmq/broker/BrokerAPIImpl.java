@@ -89,7 +89,13 @@ public class BrokerAPIImpl implements BrokerAPI {
 
     @Override
     public BrokerMessage.PullMessageResponse pullMessage(BrokerMessage.PullMessageRequest request) {
-        return null;
+        BrokerMessage.PullMessageResponse response = stateMachine.pullMessage(request);
+        LOG.info("pullMessage request, topic={}, queue={}, "
+                        + "resCode, resSize={}",
+                request.getTopic(), request.getQueue(),
+                response.getBaseRes().getResCode(),
+                response.getContentsCount());
+        return response;
     }
 
 }

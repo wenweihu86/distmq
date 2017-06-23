@@ -34,8 +34,9 @@ message SendMessageResponse {
 message PullMessageRequest {
     string topic = 1;
     int32 queue = 2;
-    string consumer_group = 3;
-    int32 message_count = 4;
+    int64 offset = 3;
+    string consumer_group = 4;
+    int32 message_count = 5;
 }
 
 message PullMessageResponse {

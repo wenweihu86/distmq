@@ -1,6 +1,7 @@
 package com.github.wenweihu86.distmq.broker.log;
 
 import com.github.wenweihu86.distmq.broker.BrokerUtils;
+import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,8 +89,8 @@ public class Segment {
                 byteBuffer.putInt(messageContent.length);
                 byteBuffer.put(messageContent);
                 writeSize = channel.write(byteBuffer);
-                endOffset += writeSize;
                 offset = startOffset;
+                endOffset = startOffset + writeSize;
             } else {
                 byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
                 byteBuffer.putInt(messageContent.length);

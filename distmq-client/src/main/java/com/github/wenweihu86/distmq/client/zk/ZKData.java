@@ -3,6 +3,7 @@ package com.github.wenweihu86.distmq.client.zk;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by huwenwei on 2017/6/21.
@@ -18,28 +19,28 @@ public class ZKData {
     }
 
     // shardingId -> broker address list
-    private Map<Integer, List<String>> brokerMap = new ConcurrentHashMap<>();
+    private ConcurrentMap<Integer, List<String>> brokerMap = new ConcurrentHashMap<>();
 
     // topic -> (queueId -> shardingId)
-    private Map<String, Map<Integer, Integer>> topicMap = new ConcurrentHashMap<>();
+    private ConcurrentMap<String, Map<Integer, Integer>> topicMap = new ConcurrentHashMap<>();
 
     public static void setInstance(ZKData instance) {
         ZKData.instance = instance;
     }
 
-    public Map<Integer, List<String>> getBrokerMap() {
+    public ConcurrentMap<Integer, List<String>> getBrokerMap() {
         return brokerMap;
     }
 
-    public void setBrokerMap(Map<Integer, List<String>> brokerMap) {
+    public void setBrokerMap(ConcurrentMap<Integer, List<String>> brokerMap) {
         this.brokerMap = brokerMap;
     }
 
-    public Map<String, Map<Integer, Integer>> getTopicMap() {
+    public ConcurrentMap<String, Map<Integer, Integer>> getTopicMap() {
         return topicMap;
     }
 
-    public void setTopicMap(Map<String, Map<Integer, Integer>> topicMap) {
+    public void setTopicMap(ConcurrentMap<String, Map<Integer, Integer>> topicMap) {
         this.topicMap = topicMap;
     }
 }

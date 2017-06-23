@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by wenweihu86 on 2017/6/21.
@@ -50,7 +51,7 @@ public class ZKClient {
 
     public void subscribeBroker() {
         final ZKData zkData = ZKData.getInstance();
-        final Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+        final ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
         try {
             final String brokerParentPath = zkConf.getBasePath() + "/brokers";
             List<String> shardings = zkClient.getChildren().forPath(brokerParentPath);
@@ -73,7 +74,7 @@ public class ZKClient {
 
     public void registerTopic(String topic, int queueNum) {
         ZKData zkData = ZKData.getInstance();
-        Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+        ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
         List<Integer> shardingIds = new ArrayList<>(brokerMap.keySet());
         int shardingNum = shardingIds.size();
         String topicPath = zkConf.getBasePath() + "/topics/";
@@ -93,7 +94,7 @@ public class ZKClient {
 
     public void subscribeTopic() {
         ZKData zkData = ZKData.getInstance();
-        Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
+        ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
         String topicParentPath = zkConf.getBasePath() + "/topics/";
         try {
             List<String> topics = zkClient.getChildren().forPath(topicParentPath);
@@ -138,7 +139,7 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+            ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
                 List<String> newBrokerAddressList = zkClient.getChildren().forPath(shardingPath);
@@ -153,7 +154,7 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+            ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String brokerPath = zkConf.getBasePath() + "/brokers";
                 List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
@@ -183,7 +184,7 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
+            ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String topicParentPath = zkConf.getBasePath() + "/topics";
                 List<String> newTopics = zkClient.getChildren().forPath(topicParentPath);
@@ -227,7 +228,7 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
+            ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
             Map<Integer, Integer> queueMap = topicMap.get(topic);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String topicPath = zkConf.getBasePath() + "/topics/" + topic;

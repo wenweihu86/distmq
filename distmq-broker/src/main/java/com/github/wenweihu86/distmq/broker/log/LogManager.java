@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by wenweihu86 on 2017/6/20.
@@ -14,10 +16,10 @@ public class LogManager {
     private static final Logger LOG = LoggerFactory.getLogger(LogManager.class);
     private String logDir;
     // topic -> (queueId -> segment log)
-    private Map<String, Map<Integer, SegmentedLog>> topicLogMap;
+    private ConcurrentMap<String, ConcurrentMap<Integer, SegmentedLog>> topicLogMap;
 
     public LogManager(String logDir) {
-        this.topicLogMap = new HashMap<>();
+        this.topicLogMap = new ConcurrentHashMap<>();
         this.logDir = logDir;
         File dirFile = new File(logDir);
         if (!dirFile.exists()) {
@@ -32,7 +34,7 @@ public class LogManager {
                 }
                 LOG.info("Loading log from " + topicDir.getAbsolutePath());
                 if (!this.topicLogMap.containsKey(topicDir)) {
-                    this.topicLogMap.put(topicDir.getName(), new HashMap<Integer, SegmentedLog>());
+                    this.topicLogMap.put(topicDir.getName(), new ConcurrentHashMap<Integer, SegmentedLog>());
                 }
                 Map<Integer, SegmentedLog> queueMap = this.topicLogMap.get(topicDir.getName());
                 File[] queueDirs = topicDir.listFiles();
@@ -53,10 +55,20 @@ public class LogManager {
     }
 
     public SegmentedLog getOrCreateQueueLog(String topic, int queue) {
-        // TODO:
-        // 需要读取zookeeper中topic/queue信息来判断该queue是否应该存在本broker集群分片
-        // zookeeper存储结构为/distmq/topics/topicName/queueId -> brokerShardingId
-        return null;
+        ConcurrentMap<Integer, SegmentedLog> queueMap = topicLogMap.get(topic);
+        if (queueMap == null) {
+            queueMap = new ConcurrentHashMap<>();
+            topicLogMap.putIfAbsent(topic, queueMap);
+            queueMap = topicLogMap.get(topic);
+        }
+        SegmentedLog segmentedLog = queueMap.get(queue);
+        if (segmentedLog == null) {
+            String fullQueuePath = logDir + File.separator + topic + File.separator + queue;
+            segmentedLog = new SegmentedLog(fullQueuePath);
+            queueMap.putIfAbsent(queue, segmentedLog);
+            segmentedLog = queueMap.get(queue);
+        }
+        return segmentedLog;
     }
 
 }

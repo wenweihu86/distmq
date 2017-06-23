@@ -2,9 +2,12 @@ package com.github.wenweihu86.distmq.broker;
 
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.broker.log.LogManager;
+import com.github.wenweihu86.distmq.broker.log.Segment;
+import com.github.wenweihu86.distmq.broker.log.SegmentedLog;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.distmq.client.zk.ZKData;
 import com.github.wenweihu86.raft.StateMachine;
+import com.google.protobuf.ByteString;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,9 +68,36 @@ public class BrokerStateMachine implements StateMachine {
     public void apply(byte[] dataBytes) {
         try {
             BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.parseFrom(dataBytes);
+            SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
+            segmentedLog.append(request.getContent().toByteArray());
         } catch (Exception ex) {
             LOG.warn("apply exception:", ex);
         }
+    }
+
+    public BrokerMessage.PullMessageResponse pullMessage(BrokerMessage.PullMessageRequest request) {
+        BrokerMessage.PullMessageResponse.Builder responseBuilder = BrokerMessage.PullMessageResponse.newBuilder();
+        SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
+        int readCount = 0;
+        long offset = request.getOffset();
+        if (offset == 0) {
+            offset = Segment.SEGMENT_HEADER_LENGTH;
+        }
+        while (readCount < request.getMessageCount()) {
+            byte[] messageBytes = segmentedLog.read(offset);
+            if (messageBytes == null) {
+                break;
+            }
+            BrokerMessage.MessageContent message = BrokerMessage.MessageContent.newBuilder()
+                    .setTopic(request.getTopic())
+                    .setQueue(request.getQueue())
+                    .setOffset(offset)
+                    .setContent(ByteString.copyFrom(messageBytes))
+                    .build();
+            responseBuilder.addContents(message);
+            offset += messageBytes.length + Segment.MESSAGE_HEADER_LENGTH;
+        }
+        return responseBuilder.build();
     }
 
 }
