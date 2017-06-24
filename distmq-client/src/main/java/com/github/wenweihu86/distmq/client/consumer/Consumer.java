@@ -20,6 +20,7 @@ public class Consumer implements Runnable {
     private ZKClient zkClient;
     private ScheduledExecutorService timer = Executors.newScheduledThreadPool(1);
     private MessageListener listener;
+    private long offset;
 
     public Consumer(ConsumerConfig config, MessageListener listener) {
         this.config = config;
@@ -30,6 +31,7 @@ public class Consumer implements Runnable {
         zkClient.subscribeConsumer(config.getConsumerGroup());
         zkClient.subscribeBroker();
         zkClient.subscribeTopic();
+        this.offset = zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic());
         this.timer.scheduleAtFixedRate(this, 1000, 5000, TimeUnit.MILLISECONDS);
     }
 
@@ -43,7 +45,7 @@ public class Consumer implements Runnable {
                     .setTopic(config.getTopic())
                     .setQueue(queueId)
                     .setMessageCount(config.getMaxMessageCountPerRequest())
-                    .setOffset(0) // TODO: offset从zk获取
+                    .setOffset(offset)
                     .build();
 
             List<String> brokers;
@@ -69,7 +71,12 @@ public class Consumer implements Runnable {
                 LOG.info("pullMessage success, topic={}, queue={}, offset={}, size={}",
                         request.getTopic(), request.getQueue(), request.getOffset(),
                         response.getContentsCount());
-                listener.consumeMessage(response.getContentsList());
+                if (response.getContentsCount() > 0) {
+                    listener.consumeMessage(response.getContentsList());
+                    BrokerMessage.MessageContent lastMessage = response.getContents(response.getContentsCount() - 1);
+                    offset = lastMessage.getOffset() + 1;
+                    zkClient.updateConsumerOffset(config.getConsumerGroup(), config.getTopic(), offset);
+                }
             }
         }
     }

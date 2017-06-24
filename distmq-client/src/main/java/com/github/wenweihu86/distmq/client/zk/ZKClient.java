@@ -164,7 +164,7 @@ public class ZKClient {
     }
 
     public void registerConsumer(String consumerGroup, String consumerId) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/" + consumerId;
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids/" + consumerId;
         try {
             zkClient.create()
                     .creatingParentsIfNeeded()
@@ -178,7 +178,7 @@ public class ZKClient {
 
     public void subscribeConsumer(String consumerGroup) {
         ZKData zkData = ZKData.getInstance();
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup;
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
         try {
             List<String> consumerIds = zkClient.getChildren().forPath(path);
             zkData.setConsumerIds(consumerIds);
@@ -187,6 +187,30 @@ public class ZKClient {
                     .forPath(path);
         } catch (Exception ex) {
             LOG.warn("subscribeConsumer exception:", ex);
+        }
+    }
+
+    public long readConsumerOffset(String consumerGroup, String topic) {
+        long offset = 0;
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
+        try {
+            byte[] dataBytes = zkClient.getData().forPath(path);
+            if (dataBytes != null) {
+                offset = Long.valueOf(new String(dataBytes));
+            }
+        } catch (Exception ex) {
+            LOG.warn("readConsumerOffset exception:", ex);
+        }
+        return offset;
+    }
+
+    public void updateConsumerOffset(String consumerGroup, String topic, long offset) {
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
+        try {
+            byte[] dataBytes = String.valueOf(offset).getBytes();
+            zkClient.setData().forPath(path, dataBytes);
+        } catch (Exception ex) {
+            LOG.warn("updateConsumerOffset exception:", ex);
         }
     }
 
@@ -200,7 +224,7 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String path = zkConf.getBasePath() + "/consumers/" + consumerGroup;
+                String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
                 try {
                     List<String> consumerIds = zkClient.getChildren().forPath(path);
                     ZKData zkData = ZKData.getInstance();
