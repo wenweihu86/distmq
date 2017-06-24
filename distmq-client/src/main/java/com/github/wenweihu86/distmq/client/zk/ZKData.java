@@ -1,5 +1,6 @@
 package com.github.wenweihu86.distmq.client.zk;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +27,12 @@ public class ZKData {
 
     // topic -> (queueId -> shardingId)
     private Map<String, Map<Integer, Integer>> topicMap = new HashMap<>();
-
     private Lock topicLock = new ReentrantLock();
     private Condition topicCondition = topicLock.newCondition();
+
+    // consumer ids of group
+    private List<String> consumerIds = new ArrayList<>();
+    private Lock consumerIdsLock = new ReentrantLock();
 
     public static void setInstance(ZKData instance) {
         ZKData.instance = instance;
@@ -60,5 +64,21 @@ public class ZKData {
 
     public Condition getTopicCondition() {
         return topicCondition;
+    }
+
+    public List<String> getConsumerIds() {
+        return consumerIds;
+    }
+
+    public void setConsumerIds(List<String> consumerIds) {
+        this.consumerIds = consumerIds;
+    }
+
+    public Lock getConsumerIdsLock() {
+        return consumerIdsLock;
+    }
+
+    public void setConsumerIdsLock(Lock consumerIdsLock) {
+        this.consumerIdsLock = consumerIdsLock;
     }
 }

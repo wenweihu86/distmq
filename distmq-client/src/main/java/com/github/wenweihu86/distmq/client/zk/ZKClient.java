@@ -163,6 +163,55 @@ public class ZKClient {
         }
     }
 
+    public void registerConsumer(String consumerGroup, String consumerId) {
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/" + consumerId;
+        try {
+            zkClient.create()
+                    .creatingParentsIfNeeded()
+                    .withMode(CreateMode.EPHEMERAL)
+                    .forPath(path, "".getBytes());
+        } catch (Exception ex) {
+            LOG.warn("registerConsumer exception:", ex);
+        }
+        LOG.info("registerConsumer sucess, consumerGroup={}, consumerId={}", consumerGroup, consumerId);
+    }
+
+    public void subscribeConsumer(String consumerGroup) {
+        ZKData zkData = ZKData.getInstance();
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup;
+        try {
+            List<String> consumerIds = zkClient.getChildren().forPath(path);
+            zkData.setConsumerIds(consumerIds);
+            zkClient.getChildren()
+                    .usingWatcher(new ConsumerWatcher(consumerGroup))
+                    .forPath(path);
+        } catch (Exception ex) {
+            LOG.warn("subscribeConsumer exception:", ex);
+        }
+    }
+
+    private class ConsumerWatcher implements CuratorWatcher {
+        private String consumerGroup;
+
+        public ConsumerWatcher(String consumerGroup) {
+            this.consumerGroup = consumerGroup;
+        }
+
+        @Override
+        public void process(WatchedEvent event) throws Exception {
+            if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
+                String path = zkConf.getBasePath() + "/consumers/" + consumerGroup;
+                try {
+                    List<String> consumerIds = zkClient.getChildren().forPath(path);
+                    ZKData zkData = ZKData.getInstance();
+                    zkData.setConsumerIds(consumerIds);
+                } catch (Exception ex) {
+                    LOG.warn("subscribeConsumer exception:", ex);
+                }
+            }
+        }
+    }
+
     // 监听所有broker的分片信息变化事件
     private class BrokersWatcher implements CuratorWatcher {
         @Override
