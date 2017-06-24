@@ -1,5 +1,10 @@
 package com.github.wenweihu86.distmq.client.zk;
 
+import com.github.wenweihu86.distmq.client.BrokerClient;
+import com.github.wenweihu86.distmq.client.BrokerClientManager;
+import com.github.wenweihu86.distmq.client.consumer.ConsumerConfig;
+import com.github.wenweihu86.distmq.client.producer.ProducerConfig;
+import com.github.wenweihu86.rpc.client.RPCClientOptions;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
@@ -22,9 +27,16 @@ public class ZKClient {
     private static final Logger LOG = LoggerFactory.getLogger(ZKClient.class);
     private ZKConf zkConf;
     private CuratorFramework zkClient;
+    private boolean isProducer = false;
+    private boolean isConsumer = false;
 
     public ZKClient(ZKConf conf) {
         this.zkConf = conf;
+        if (conf instanceof ProducerConfig) {
+            isProducer = true;
+        } else if (conf instanceof ConsumerConfig) {
+            isConsumer = true;
+        }
         RetryPolicy retryPolicy = new ExponentialBackoffRetry(
                 zkConf.getRetryIntervalMs(), zkConf.getRetryCount());
         this.zkClient = CuratorFrameworkFactory.builder()
@@ -47,11 +59,13 @@ public class ZKClient {
         } catch (Exception ex) {
             LOG.warn("registerBroker exception:", ex);
         }
+        LOG.info("register broker sucess, ip={}, port={}", ip, port);
     }
 
+    // 启动时调用，所以不用加锁
     public void subscribeBroker() {
         final ZKData zkData = ZKData.getInstance();
-        final ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+        final Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
         try {
             final String brokerParentPath = zkConf.getBasePath() + "/brokers";
             List<String> shardings = zkClient.getChildren().forPath(brokerParentPath);
@@ -59,6 +73,13 @@ public class ZKClient {
                 final int shardingId = Integer.valueOf(sharding);
                 final String shardingPath = brokerParentPath + "/" + sharding;
                 List<String> brokerAddressList = zkClient.getChildren().forPath(shardingPath);
+                if (isProducer || isConsumer) {
+                    RPCClientOptions rpcClientOptions = BrokerClientManager.getRpcClientOptions();
+                    for (String address : brokerAddressList) {
+                        BrokerClient brokerClient = new BrokerClient(address, rpcClientOptions);
+                        BrokerClientManager.getInstance().getBrokerClientMap().put(address, brokerClient);
+                    }
+                }
                 brokerMap.put(shardingId, brokerAddressList);
                 // 监听broker分片变化
                 zkClient.getChildren().usingWatcher(
@@ -72,15 +93,28 @@ public class ZKClient {
         }
     }
 
-    public void registerTopic(String topic, int queueNum) {
+    /**
+     * 创建新的topic，加锁是防止重复创建
+     * @param topic topic名称
+     * @param queueNum queue个数
+     */
+    public synchronized void registerTopic(String topic, int queueNum) {
         ZKData zkData = ZKData.getInstance();
-        ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
-        List<Integer> shardingIds = new ArrayList<>(brokerMap.keySet());
+        List<Integer> shardingIds;
+        zkData.getBrokerLock().lock();
+        try {
+            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+            shardingIds = new ArrayList<>(brokerMap.keySet());
+        } finally {
+            zkData.getBrokerLock().unlock();
+        }
+
         int shardingNum = shardingIds.size();
-        String topicPath = zkConf.getBasePath() + "/topics/";
+        String topicPath = zkConf.getBasePath() + "/topics/" + topic;
         for (int queueId = 0; queueId < queueNum; queueId++) {
-            int shardingId = queueId % shardingNum;
-            String queuePath = topicPath + queueId;
+            int index = queueId % shardingNum;
+            int shardingId = shardingIds.get(index);
+            String queuePath = topicPath + "/" + queueId;
             byte[] queueData = String.valueOf(shardingId).getBytes();
             try {
                 zkClient.create()
@@ -92,9 +126,10 @@ public class ZKClient {
         }
     }
 
+    // 启动时调用，所以不用加锁
     public void subscribeTopic() {
         ZKData zkData = ZKData.getInstance();
-        ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
+        Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
         String topicParentPath = zkConf.getBasePath() + "/topics/";
         try {
             List<String> topics = zkClient.getChildren().forPath(topicParentPath);
@@ -128,6 +163,73 @@ public class ZKClient {
         }
     }
 
+    // 监听所有broker的分片信息变化事件
+    private class BrokersWatcher implements CuratorWatcher {
+        @Override
+        public void process(WatchedEvent event) throws Exception {
+            ZKData zkData = ZKData.getInstance();
+            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+            if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
+                String brokerPath = zkConf.getBasePath() + "/brokers";
+                List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
+
+                List<String> oldShardings = new ArrayList<>();
+                zkData.getBrokerLock().lock();
+                try {
+                    for (Integer shardingId : zkData.getBrokerMap().keySet()) {
+                        oldShardings.add(String.valueOf(shardingId));
+                    }
+                } finally {
+                    zkData.getBrokerLock().unlock();
+                }
+
+                Collection<String> addedShardings = CollectionUtils.subtract(newShardings, oldShardings);
+                Collection<String> deletedShardings = CollectionUtils.subtract(oldShardings, newShardings);
+                for (String sharding : addedShardings) {
+                    int shardingId = Integer.valueOf(sharding);
+                    String shardingPath = brokerPath + "/" + sharding;
+                    List<String> brokerAddressList = zkClient.getChildren().forPath(shardingPath);
+                    for (String address : brokerAddressList) {
+                        if (isProducer || isConsumer) {
+                            BrokerClient brokerClient = new BrokerClient(address, BrokerClientManager.getRpcClientOptions());
+                            BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
+                        }
+                    }
+
+                    zkData.getBrokerLock().lock();
+                    try {
+                        zkData.getBrokerMap().put(shardingId, brokerAddressList);
+                    } finally {
+                        zkData.getBrokerLock().unlock();
+                    }
+
+                    zkClient.getChildren().usingWatcher(
+                            new BrokerShardingWather(shardingId))
+                            .forPath(shardingPath);
+                }
+
+                for (String sharding : deletedShardings) {
+                    List<String> brokerList;
+                    zkData.getBrokerLock().lock();
+                    try {
+                        brokerList = zkData.getBrokerMap().remove(Integer.valueOf(sharding));
+                    } finally {
+                        zkData.getBrokerLock().unlock();
+                    }
+                    if ((isProducer || isConsumer) && CollectionUtils.isNotEmpty(brokerList)) {
+                        ConcurrentMap<String, BrokerClient> brokerClientMap
+                                = BrokerClientManager.getInstance().getBrokerClientMap();
+                        for (String address : brokerList) {
+                            BrokerClient client = brokerClientMap.get(address);
+                            client.getRpcClient().stop();
+                            brokerClientMap.remove(address);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 监听broker某个分片下的节点变化
     private class BrokerShardingWather implements CuratorWatcher {
         private int shardingId;
@@ -139,40 +241,46 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
+            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
                 List<String> newBrokerAddressList = zkClient.getChildren().forPath(shardingPath);
-                // TODO: 对于client需要关闭被删除节点的连接，以及新建新增节点连接
-                brokerMap.put(shardingId, newBrokerAddressList);
-            }
-        }
-    }
+                List<String> oldBrokerAddressList;
+                zkData.getBrokerLock().lock();
+                try {
+                    oldBrokerAddressList = zkData.getBrokerMap().get(shardingPath);
+                } finally {
+                    zkData.getBrokerLock().unlock();
+                }
+                Collection<String> addedBrokerAddressList
+                        = CollectionUtils.subtract(newBrokerAddressList, oldBrokerAddressList);
+                Collection<String> deletedBrokerAddressList
+                        = CollectionUtils.subtract(oldBrokerAddressList, newBrokerAddressList);
+                for (String address : addedBrokerAddressList) {
+                    zkData.getBrokerLock().lock();
+                    try {
+                        zkData.getBrokerMap().get(shardingId).add(address);
+                    } finally {
+                        zkData.getBrokerLock().unlock();
+                    }
 
-    // 监听所有broker的分片信息变化事件
-    private class BrokersWatcher implements CuratorWatcher {
-        @Override
-        public void process(WatchedEvent event) throws Exception {
-            ZKData zkData = ZKData.getInstance();
-            ConcurrentMap<Integer, List<String>> brokerMap = zkData.getBrokerMap();
-            if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String brokerPath = zkConf.getBasePath() + "/brokers";
-                List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
-                Iterator<Map.Entry<Integer, List<String>>> iterator = brokerMap.entrySet().iterator();
-                while (iterator.hasNext()){
-                    Map.Entry<Integer, List<String>> entry = iterator.next();
-                    if (!newShardings.contains(Integer.valueOf(entry.getKey()))) {
-                        // TODO:对于client，需要删除对应节点的连接
-                        iterator.remove();
+                    if (isProducer || isConsumer) {
+                        BrokerClient brokerClient = new BrokerClient(address, BrokerClientManager.getRpcClientOptions());
+                        BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
                     }
                 }
-                for (String sharding : newShardings) {
-                    int shardingId = Integer.valueOf(sharding);
-                    if (!brokerMap.containsKey(shardingId)) {
-                        String shardingPath = brokerPath + "/" + sharding;
-                        zkClient.getChildren().usingWatcher(
-                                new BrokerShardingWather(shardingId))
-                                .forPath(shardingPath);
+                for (String address : deletedBrokerAddressList) {
+                    zkData.getBrokerLock().lock();
+                    try {
+                        zkData.getBrokerMap().get(shardingId).remove(address);
+                    } finally {
+                        zkData.getBrokerLock().unlock();
+                    }
+
+                    if (isProducer || isConsumer) {
+                        BrokerClient brokerClient
+                                = BrokerClientManager.getInstance().getBrokerClientMap().remove(address);
+                        brokerClient.getRpcClient().stop();
                     }
                 }
             }
@@ -184,34 +292,49 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String topicParentPath = zkConf.getBasePath() + "/topics";
                 List<String> newTopics = zkClient.getChildren().forPath(topicParentPath);
-                List<String> oldTopics = new ArrayList<>(topicMap.keySet());
-                if (CollectionUtils.isEmpty(newTopics)) {
-                    LOG.warn("there is no topics");
-                    topicMap.clear();
-                } else {
-                    Collection<String> addedTopics = CollectionUtils.subtract(newTopics, oldTopics);
-                    Collection<String> deletedTopics = CollectionUtils.subtract(oldTopics, newTopics);
-                    for (String topic : addedTopics) {
-                        Map<Integer, Integer> queueMap = topicMap.get(topic);
-                        String topicPath = topicParentPath + "/" + topic;
-                        List<String> queueList = zkClient.getChildren().forPath(topicPath);
-                        for (String queue : queueList) {
-                            String queuePath = topicPath + "/" + queue;
-                            String queueData = new String(zkClient.getData().forPath(queuePath));
-                            int shardingId = Integer.valueOf(queueData);
-                            int queueId = Integer.valueOf(queue);
-                            queueMap.put(queueId, shardingId);
-                        }
+                List<String> oldTopics;
+                zkData.getTopicLock().lockInterruptibly();
+                try {
+                    oldTopics = new ArrayList<>(zkData.getTopicMap().keySet());
+                } finally {
+                    zkData.getTopicLock().unlock();
+                }
+                Collection<String> addedTopics = CollectionUtils.subtract(newTopics, oldTopics);
+                Collection<String> deletedTopics = CollectionUtils.subtract(oldTopics, newTopics);
+                for (String topic : addedTopics) {
+                    Map<Integer, Integer> queueMap = new HashMap<>();
+                    String topicPath = topicParentPath + "/" + topic;
+                    List<String> queueList = zkClient.getChildren().forPath(topicPath);
+                    for (String queue : queueList) {
+                        String queuePath = topicPath + "/" + queue;
+                        String queueData = new String(zkClient.getData().forPath(queuePath));
+                        int shardingId = Integer.valueOf(queueData);
+                        int queueId = Integer.valueOf(queue);
+                        queueMap.put(queueId, shardingId);
                     }
+                    zkClient.getChildren().usingWatcher(
+                            new TopicWatcher(topic))
+                            .forPath(topicPath);
+                    zkData.getTopicLock().lockInterruptibly();
+                    try {
+                        zkData.getTopicMap().put(topic, queueMap);
+                        zkData.getTopicCondition().signalAll();
+                    } finally {
+                        zkData.getTopicLock().unlock();
+                    }
+                }
 
+                zkData.getTopicLock().lockInterruptibly();
+                try {
                     for (String topic : deletedTopics) {
-                        topicMap.remove(topic);
+                        zkData.getTopicMap().remove(topic);
                         // TODO: is need remove watcher?
                     }
+                } finally {
+                    zkData.getTopicLock().unlock();
                 }
             }
         }
@@ -228,8 +351,6 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
-            ConcurrentMap<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
-            Map<Integer, Integer> queueMap = topicMap.get(topic);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 String topicPath = zkConf.getBasePath() + "/topics/" + topic;
                 List<String> newQueues = zkClient.getChildren().forPath(topicPath);
@@ -237,17 +358,36 @@ public class ZKClient {
                 for (String queue : newQueues) {
                     newQueueIds.add(Integer.valueOf(queue));
                 }
-                List<Integer> oldQueueIds = new ArrayList<>(queueMap.keySet());
+
+                List<Integer> oldQueueIds;
+                zkData.getTopicLock().lockInterruptibly();
+                try {
+                    oldQueueIds = new ArrayList<>(zkData.getTopicMap().get(topic).keySet());
+                } finally {
+                    zkData.getTopicLock().unlock();
+                }
+
                 Collection<Integer> addedQueueIds = CollectionUtils.subtract(newQueueIds, oldQueueIds);
                 Collection<Integer> deletedQueueIds = CollectionUtils.subtract(oldQueueIds, newQueueIds);
                 for (Integer queueId : addedQueueIds) {
                     String queuePath = topicPath + "/" + queueId;
                     String queueData = new String(zkClient.getData().forPath(queuePath));
                     Integer shardingId = Integer.valueOf(queueData);
-                    queueMap.put(queueId, shardingId);
+
+                    zkData.getTopicLock().lockInterruptibly();
+                    try {
+                        zkData.getTopicMap().get(topic).put(queueId, shardingId);
+                    } finally {
+                        zkData.getTopicLock().unlock();
+                    }
                 }
-                for (Integer queueId : deletedQueueIds) {
-                    queueMap.remove(queueId);
+                zkData.getTopicLock().lockInterruptibly();
+                try {
+                    for (Integer queueId : deletedQueueIds) {
+                        zkData.getTopicMap().get(topic).remove(queueId);
+                    }
+                } finally {
+                    zkData.getTopicLock().unlock();
                 }
             }
         }

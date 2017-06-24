@@ -1,9 +1,11 @@
 package com.github.wenweihu86.distmq.client.zk;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by huwenwei on 2017/6/21.
@@ -19,28 +21,44 @@ public class ZKData {
     }
 
     // shardingId -> broker address list
-    private ConcurrentMap<Integer, List<String>> brokerMap = new ConcurrentHashMap<>();
+    private Map<Integer, List<String>> brokerMap = new HashMap<>();
+    private Lock brokerLock = new ReentrantLock();
 
     // topic -> (queueId -> shardingId)
-    private ConcurrentMap<String, Map<Integer, Integer>> topicMap = new ConcurrentHashMap<>();
+    private Map<String, Map<Integer, Integer>> topicMap = new HashMap<>();
+
+    private Lock topicLock = new ReentrantLock();
+    private Condition topicCondition = topicLock.newCondition();
 
     public static void setInstance(ZKData instance) {
         ZKData.instance = instance;
     }
 
-    public ConcurrentMap<Integer, List<String>> getBrokerMap() {
+    public Map<Integer, List<String>> getBrokerMap() {
         return brokerMap;
     }
 
-    public void setBrokerMap(ConcurrentMap<Integer, List<String>> brokerMap) {
+    public void setBrokerMap(Map<Integer, List<String>> brokerMap) {
         this.brokerMap = brokerMap;
     }
 
-    public ConcurrentMap<String, Map<Integer, Integer>> getTopicMap() {
+    public Lock getBrokerLock() {
+        return brokerLock;
+    }
+
+    public Map<String, Map<Integer, Integer>> getTopicMap() {
         return topicMap;
     }
 
-    public void setTopicMap(ConcurrentMap<String, Map<Integer, Integer>> topicMap) {
+    public void setTopicMap(Map<String, Map<Integer, Integer>> topicMap) {
         this.topicMap = topicMap;
+    }
+
+    public Lock getTopicLock() {
+        return topicLock;
+    }
+
+    public Condition getTopicCondition() {
+        return topicCondition;
     }
 }

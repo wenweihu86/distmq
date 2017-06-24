@@ -10,6 +10,7 @@ import com.github.wenweihu86.raft.service.RaftClientService;
 import com.github.wenweihu86.raft.service.RaftConsensusService;
 import com.github.wenweihu86.raft.service.impl.RaftClientServiceImpl;
 import com.github.wenweihu86.raft.service.impl.RaftConsensusServiceImpl;
+import com.github.wenweihu86.raft.util.ConfigurationUtils;
 import com.github.wenweihu86.rpc.server.RPCServer;
 
 import java.util.List;
@@ -48,11 +49,21 @@ public class BrokerMain {
         // 注册zk
         ZKConf zkConf = conf.getZkConf();
         ZKClient zkClient = new ZKClient(zkConf);
+        zkClient.subscribeBroker();
+        zkClient.subscribeTopic();
+        // 等成为raft集群成员后，才能注册到zk
+
+        while (ConfigurationUtils.containsServer(
+                raftNode.getConfiguration(), conf.getLocalServer().getServerId())) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ex) {
+                ex.printStackTrace();
+            }
+        }
         zkClient.registerBroker(conf.getShardingId(),
                 conf.getLocalServer().getEndPoint().getHost(),
                 conf.getLocalServer().getEndPoint().getPort());
-        zkClient.subscribeBroker();
-        zkClient.subscribeTopic();
     }
 
 }

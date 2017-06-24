@@ -5,11 +5,11 @@ package com.github.wenweihu86.distmq.client.zk;
  */
 public class ZKConf {
     private String servers;
-    private int connectTimeoutMs;
-    private int sessionTimeoutMs;
-    private int retryCount;
-    private int retryIntervalMs;
-    private String basePath;
+    private int connectTimeoutMs = 500;
+    private int sessionTimeoutMs = 5000;
+    private int retryCount = 3;
+    private int retryIntervalMs = 1000;
+    private String basePath = "/distmq";
 
     public String getServers() {
         return servers;
