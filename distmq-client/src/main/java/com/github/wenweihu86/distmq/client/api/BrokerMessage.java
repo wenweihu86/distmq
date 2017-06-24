@@ -2620,17 +2620,7 @@ public final class BrokerMessage {
     long getOffset();
 
     /**
-     * <code>optional string consumer_group = 4;</code>
-     */
-    java.lang.String getConsumerGroup();
-    /**
-     * <code>optional string consumer_group = 4;</code>
-     */
-    com.google.protobuf.ByteString
-        getConsumerGroupBytes();
-
-    /**
-     * <code>optional int32 message_count = 5;</code>
+     * <code>optional int32 message_count = 4;</code>
      */
     int getMessageCount();
   }
@@ -2649,7 +2639,6 @@ public final class BrokerMessage {
       topic_ = "";
       queue_ = 0;
       offset_ = 0L;
-      consumerGroup_ = "";
       messageCount_ = 0;
     }
 
@@ -2694,13 +2683,7 @@ public final class BrokerMessage {
               offset_ = input.readInt64();
               break;
             }
-            case 34: {
-              java.lang.String s = input.readStringRequireUtf8();
-
-              consumerGroup_ = s;
-              break;
-            }
-            case 40: {
+            case 32: {
 
               messageCount_ = input.readInt32();
               break;
@@ -2780,44 +2763,10 @@ public final class BrokerMessage {
       return offset_;
     }
 
-    public static final int CONSUMER_GROUP_FIELD_NUMBER = 4;
-    private volatile java.lang.Object consumerGroup_;
-    /**
-     * <code>optional string consumer_group = 4;</code>
-     */
-    public java.lang.String getConsumerGroup() {
-      java.lang.Object ref = consumerGroup_;
-      if (ref instanceof java.lang.String) {
-        return (java.lang.String) ref;
-      } else {
-        com.google.protobuf.ByteString bs = 
-            (com.google.protobuf.ByteString) ref;
-        java.lang.String s = bs.toStringUtf8();
-        consumerGroup_ = s;
-        return s;
-      }
-    }
-    /**
-     * <code>optional string consumer_group = 4;</code>
-     */
-    public com.google.protobuf.ByteString
-        getConsumerGroupBytes() {
-      java.lang.Object ref = consumerGroup_;
-      if (ref instanceof java.lang.String) {
-        com.google.protobuf.ByteString b = 
-            com.google.protobuf.ByteString.copyFromUtf8(
-                (java.lang.String) ref);
-        consumerGroup_ = b;
-        return b;
-      } else {
-        return (com.google.protobuf.ByteString) ref;
-      }
-    }
-
-    public static final int MESSAGE_COUNT_FIELD_NUMBER = 5;
+    public static final int MESSAGE_COUNT_FIELD_NUMBER = 4;
     private int messageCount_;
     /**
-     * <code>optional int32 message_count = 5;</code>
+     * <code>optional int32 message_count = 4;</code>
      */
     public int getMessageCount() {
       return messageCount_;
@@ -2844,11 +2793,8 @@ public final class BrokerMessage {
       if (offset_ != 0L) {
         output.writeInt64(3, offset_);
       }
-      if (!getConsumerGroupBytes().isEmpty()) {
-        com.google.protobuf.GeneratedMessageV3.writeString(output, 4, consumerGroup_);
-      }
       if (messageCount_ != 0) {
-        output.writeInt32(5, messageCount_);
+        output.writeInt32(4, messageCount_);
       }
     }
 
@@ -2868,12 +2814,9 @@ public final class BrokerMessage {
         size += com.google.protobuf.CodedOutputStream
           .computeInt64Size(3, offset_);
       }
-      if (!getConsumerGroupBytes().isEmpty()) {
-        size += com.google.protobuf.GeneratedMessageV3.computeStringSize(4, consumerGroup_);
-      }
       if (messageCount_ != 0) {
         size += com.google.protobuf.CodedOutputStream
-          .computeInt32Size(5, messageCount_);
+          .computeInt32Size(4, messageCount_);
       }
       memoizedSize = size;
       return size;
@@ -2897,8 +2840,6 @@ public final class BrokerMessage {
           == other.getQueue());
       result = result && (getOffset()
           == other.getOffset());
-      result = result && getConsumerGroup()
-          .equals(other.getConsumerGroup());
       result = result && (getMessageCount()
           == other.getMessageCount());
       return result;
@@ -2918,8 +2859,6 @@ public final class BrokerMessage {
       hash = (37 * hash) + OFFSET_FIELD_NUMBER;
       hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
           getOffset());
-      hash = (37 * hash) + CONSUMER_GROUP_FIELD_NUMBER;
-      hash = (53 * hash) + getConsumerGroup().hashCode();
       hash = (37 * hash) + MESSAGE_COUNT_FIELD_NUMBER;
       hash = (53 * hash) + getMessageCount();
       hash = (29 * hash) + unknownFields.hashCode();
@@ -3046,8 +2985,6 @@ public final class BrokerMessage {
 
         offset_ = 0L;
 
-        consumerGroup_ = "";
-
         messageCount_ = 0;
 
         return this;
@@ -3075,7 +3012,6 @@ public final class BrokerMessage {
         result.topic_ = topic_;
         result.queue_ = queue_;
         result.offset_ = offset_;
-        result.consumerGroup_ = consumerGroup_;
         result.messageCount_ = messageCount_;
         onBuilt();
         return result;
@@ -3127,10 +3063,6 @@ public final class BrokerMessage {
         }
         if (other.getOffset() != 0L) {
           setOffset(other.getOffset());
-        }
-        if (!other.getConsumerGroup().isEmpty()) {
-          consumerGroup_ = other.consumerGroup_;
-          onChanged();
         }
         if (other.getMessageCount() != 0) {
           setMessageCount(other.getMessageCount());
@@ -3282,84 +3214,15 @@ public final class BrokerMessage {
         return this;
       }
 
-      private java.lang.Object consumerGroup_ = "";
-      /**
-       * <code>optional string consumer_group = 4;</code>
-       */
-      public java.lang.String getConsumerGroup() {
-        java.lang.Object ref = consumerGroup_;
-        if (!(ref instanceof java.lang.String)) {
-          com.google.protobuf.ByteString bs =
-              (com.google.protobuf.ByteString) ref;
-          java.lang.String s = bs.toStringUtf8();
-          consumerGroup_ = s;
-          return s;
-        } else {
-          return (java.lang.String) ref;
-        }
-      }
-      /**
-       * <code>optional string consumer_group = 4;</code>
-       */
-      public com.google.protobuf.ByteString
-          getConsumerGroupBytes() {
-        java.lang.Object ref = consumerGroup_;
-        if (ref instanceof String) {
-          com.google.protobuf.ByteString b = 
-              com.google.protobuf.ByteString.copyFromUtf8(
-                  (java.lang.String) ref);
-          consumerGroup_ = b;
-          return b;
-        } else {
-          return (com.google.protobuf.ByteString) ref;
-        }
-      }
-      /**
-       * <code>optional string consumer_group = 4;</code>
-       */
-      public Builder setConsumerGroup(
-          java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  
-        consumerGroup_ = value;
-        onChanged();
-        return this;
-      }
-      /**
-       * <code>optional string consumer_group = 4;</code>
-       */
-      public Builder clearConsumerGroup() {
-        
-        consumerGroup_ = getDefaultInstance().getConsumerGroup();
-        onChanged();
-        return this;
-      }
-      /**
-       * <code>optional string consumer_group = 4;</code>
-       */
-      public Builder setConsumerGroupBytes(
-          com.google.protobuf.ByteString value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  checkByteStringIsUtf8(value);
-        
-        consumerGroup_ = value;
-        onChanged();
-        return this;
-      }
-
       private int messageCount_ ;
       /**
-       * <code>optional int32 message_count = 5;</code>
+       * <code>optional int32 message_count = 4;</code>
        */
       public int getMessageCount() {
         return messageCount_;
       }
       /**
-       * <code>optional int32 message_count = 5;</code>
+       * <code>optional int32 message_count = 4;</code>
        */
       public Builder setMessageCount(int value) {
         
@@ -3368,7 +3231,7 @@ public final class BrokerMessage {
         return this;
       }
       /**
-       * <code>optional int32 message_count = 5;</code>
+       * <code>optional int32 message_count = 4;</code>
        */
       public Builder clearMessageCount() {
         
@@ -4403,15 +4266,15 @@ public final class BrokerMessage {
       "\004 \001(\014\"C\n\022SendMessageRequest\022\r\n\005topic\030\001 \001" +
       "(\t\022\r\n\005queue\030\002 \001(\005\022\017\n\007content\030\003 \001(\014\":\n\023Se" +
       "ndMessageResponse\022#\n\010base_res\030\001 \001(\0132\021.ap" +
-      "i.BaseResponse\"q\n\022PullMessageRequest\022\r\n\005" +
+      "i.BaseResponse\"Y\n\022PullMessageRequest\022\r\n\005" +
       "topic\030\001 \001(\t\022\r\n\005queue\030\002 \001(\005\022\016\n\006offset\030\003 \001" +
-      "(\003\022\026\n\016consumer_group\030\004 \001(\t\022\025\n\rmessage_co",
-      "unt\030\005 \001(\005\"a\n\023PullMessageResponse\022#\n\010base" +
-      "_res\030\001 \001(\0132\021.api.BaseResponse\022%\n\010content" +
-      "s\030\002 \003(\0132\023.api.MessageContent*2\n\007ResCode\022" +
-      "\024\n\020RES_CODE_SUCCESS\020\000\022\021\n\rRES_CODE_FAIL\020\001" +
-      "B8\n\'com.github.wenweihu86.distmq.client." +
-      "apiB\rBrokerMessageb\006proto3"
+      "(\003\022\025\n\rmessage_count\030\004 \001(\005\"a\n\023PullMessage",
+      "Response\022#\n\010base_res\030\001 \001(\0132\021.api.BaseRes" +
+      "ponse\022%\n\010contents\030\002 \003(\0132\023.api.MessageCon" +
+      "tent*2\n\007ResCode\022\024\n\020RES_CODE_SUCCESS\020\000\022\021\n" +
+      "\rRES_CODE_FAIL\020\001B8\n\'com.github.wenweihu8" +
+      "6.distmq.client.apiB\rBrokerMessageb\006prot" +
+      "o3"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
         new com.google.protobuf.Descriptors.FileDescriptor.    InternalDescriptorAssigner() {
@@ -4454,7 +4317,7 @@ public final class BrokerMessage {
     internal_static_api_PullMessageRequest_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_api_PullMessageRequest_descriptor,
-        new java.lang.String[] { "Topic", "Queue", "Offset", "ConsumerGroup", "MessageCount", });
+        new java.lang.String[] { "Topic", "Queue", "Offset", "MessageCount", });
     internal_static_api_PullMessageResponse_descriptor =
       getDescriptor().getMessageTypes().get(5);
     internal_static_api_PullMessageResponse_fieldAccessorTable = new
