@@ -7,4 +7,5 @@ Distributed Message Queue based on Raft
 * consumer支持rebalance消费
 * raft snapshot使用硬链接
 * 支持多consumerGroup和多topic
+* 支持broker failover
 * ......
