@@ -8,7 +8,7 @@ import com.github.wenweihu86.rpc.client.RPCClientOptions;
  */
 public class CommonConfig extends ZKConf {
     private int brokerConnectTimeoutMs = 200;
-    private int brokerReadTimeoutMs = 500;
+    private int brokerReadTimeoutMs = 1000;
     private int brokerWriteTimeoutMs = 200;
 
     public RPCClientOptions getRPCClientOptions() {

@@ -12,14 +12,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
 /**
- * queue中每个文件用segment表示，
- * segment头部8字节固定是文件修改时间，
- * 之所以保存在文件里，没用使用文件的stat信息，
- * 是因为raft会每次启动会将snapshot文件拷贝到状态机。
+ * queue中每个文件用segment表示
  * Created by wenweihu86 on 2017/6/19.
  */
 public class Segment {
-    public static int SEGMENT_HEADER_LENGTH = Long.SIZE / Byte.SIZE;
     public static int MESSAGE_HEADER_LENGTH = (Long.SIZE + Integer.SIZE) / Byte.SIZE;
     private static final Logger LOG = LoggerFactory.getLogger(Segment.class);
 
@@ -76,42 +72,42 @@ public class Segment {
         }
     }
 
-    public long append(byte[] messageContent) {
-        long offset = 0;
+    public boolean append(BrokerMessage.MessageContent.Builder messageBuilder) {
         try {
-            int writeSize;
-            // TODO: 复用messageContent内存
-            ByteBuffer byteBuffer = ByteBuffer.allocate(Segment.SEGMENT_HEADER_LENGTH
-                    + Segment.MESSAGE_HEADER_LENGTH +  + messageContent.length);
             if (fileSize == 0) {
-                byteBuffer.putLong(System.currentTimeMillis());
-                byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
-                byteBuffer.putInt(messageContent.length);
-                byteBuffer.put(messageContent);
-                byteBuffer.flip();
-                writeSize = channel.write(byteBuffer);
-                channel.force(true);
-                offset = startOffset;
+                messageBuilder.setOffset(startOffset);
+            } else {
+                messageBuilder.setOffset(endOffset);
+            }
+            messageBuilder.setCreateTime(System.currentTimeMillis());
+            BrokerMessage.MessageContent message = messageBuilder.build();
+            byte[] messageBytes = message.toByteArray();
+            int totalSize = Segment.MESSAGE_HEADER_LENGTH + messageBytes.length;
+            ByteBuffer byteBuffer = ByteBuffer.allocate(totalSize);
+            byteBuffer.putLong(BrokerUtils.getCRC32(messageBytes));
+            byteBuffer.putInt(messageBytes.length);
+            byteBuffer.put(messageBytes);
+            byteBuffer.flip();
+            int writeSize = channel.write(byteBuffer);
+            channel.force(true);
+            if (writeSize != totalSize) {
+                LOG.warn("append message failed");
+                return false;
+            }
+            if (fileSize == 0) {
                 endOffset = startOffset + writeSize;
             } else {
-                byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
-                byteBuffer.putInt(messageContent.length);
-                byteBuffer.put(messageContent);
-                byteBuffer.flip();
-                channel.position(endOffset);
-                writeSize = channel.write(byteBuffer);
-                channel.force(true);
-                offset = endOffset;
                 endOffset += writeSize;
             }
             fileSize += writeSize;
         } catch (IOException ex) {
             LOG.warn("append message exception:", ex);
+            return false;
         }
-        return offset;
+        return true;
     }
 
-    public byte[] read(long offset) {
+    public BrokerMessage.MessageContent read(long offset) {
         if (offset >= startOffset + fileSize) {
             LOG.warn("invalid offset={}", offset);
             return null;
@@ -120,13 +116,14 @@ public class Segment {
             channel.position(offset - startOffset);
             ByteBuffer headerBuffer = ByteBuffer.allocate(MESSAGE_HEADER_LENGTH);
             int readLen = channel.read(headerBuffer);
-            if (readLen < MESSAGE_HEADER_LENGTH) {
+            if (readLen != MESSAGE_HEADER_LENGTH) {
                 LOG.warn("read message error");
                 return null;
             }
             headerBuffer.flip();
             long crc32 = headerBuffer.getLong();
             int messageLen = headerBuffer.getInt();
+            LOG.info("messageLen={}", messageLen);
             ByteBuffer messageContentBuffer = ByteBuffer.allocate(messageLen);
             readLen = channel.read(messageContentBuffer);
             if (readLen != messageLen) {
@@ -137,7 +134,11 @@ public class Segment {
                 LOG.warn("read message error: crc32 check failed");
                 return null;
             }
-            return messageContentBuffer.array();
+            BrokerMessage.MessageContent message
+                    = BrokerMessage.MessageContent.parseFrom(messageContentBuffer.array());
+            BrokerMessage.MessageContent result = BrokerMessage.MessageContent.newBuilder()
+                    .mergeFrom(message).setSize(MESSAGE_HEADER_LENGTH + messageLen).build();
+            return result;
         } catch (IOException ex) {
             LOG.warn("read segment error, dir={}, file={}, offset={}",
                     dirName, fileName, offset);

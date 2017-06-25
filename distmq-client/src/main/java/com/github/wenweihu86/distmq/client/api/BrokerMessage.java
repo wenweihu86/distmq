@@ -732,7 +732,17 @@ public final class BrokerMessage {
     long getOffset();
 
     /**
-     * <code>optional bytes content = 4;</code>
+     * <code>optional int32 size = 4;</code>
+     */
+    int getSize();
+
+    /**
+     * <code>optional int64 create_time = 5;</code>
+     */
+    long getCreateTime();
+
+    /**
+     * <code>optional bytes content = 6;</code>
      */
     com.google.protobuf.ByteString getContent();
   }
@@ -751,6 +761,8 @@ public final class BrokerMessage {
       topic_ = "";
       queue_ = 0;
       offset_ = 0L;
+      size_ = 0;
+      createTime_ = 0L;
       content_ = com.google.protobuf.ByteString.EMPTY;
     }
 
@@ -795,7 +807,17 @@ public final class BrokerMessage {
               offset_ = input.readInt64();
               break;
             }
-            case 34: {
+            case 32: {
+
+              size_ = input.readInt32();
+              break;
+            }
+            case 40: {
+
+              createTime_ = input.readInt64();
+              break;
+            }
+            case 50: {
 
               content_ = input.readBytes();
               break;
@@ -875,10 +897,28 @@ public final class BrokerMessage {
       return offset_;
     }
 
-    public static final int CONTENT_FIELD_NUMBER = 4;
+    public static final int SIZE_FIELD_NUMBER = 4;
+    private int size_;
+    /**
+     * <code>optional int32 size = 4;</code>
+     */
+    public int getSize() {
+      return size_;
+    }
+
+    public static final int CREATE_TIME_FIELD_NUMBER = 5;
+    private long createTime_;
+    /**
+     * <code>optional int64 create_time = 5;</code>
+     */
+    public long getCreateTime() {
+      return createTime_;
+    }
+
+    public static final int CONTENT_FIELD_NUMBER = 6;
     private com.google.protobuf.ByteString content_;
     /**
-     * <code>optional bytes content = 4;</code>
+     * <code>optional bytes content = 6;</code>
      */
     public com.google.protobuf.ByteString getContent() {
       return content_;
@@ -905,8 +945,14 @@ public final class BrokerMessage {
       if (offset_ != 0L) {
         output.writeInt64(3, offset_);
       }
+      if (size_ != 0) {
+        output.writeInt32(4, size_);
+      }
+      if (createTime_ != 0L) {
+        output.writeInt64(5, createTime_);
+      }
       if (!content_.isEmpty()) {
-        output.writeBytes(4, content_);
+        output.writeBytes(6, content_);
       }
     }
 
@@ -926,9 +972,17 @@ public final class BrokerMessage {
         size += com.google.protobuf.CodedOutputStream
           .computeInt64Size(3, offset_);
       }
+      if (size_ != 0) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(4, size_);
+      }
+      if (createTime_ != 0L) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt64Size(5, createTime_);
+      }
       if (!content_.isEmpty()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, content_);
+          .computeBytesSize(6, content_);
       }
       memoizedSize = size;
       return size;
@@ -952,6 +1006,10 @@ public final class BrokerMessage {
           == other.getQueue());
       result = result && (getOffset()
           == other.getOffset());
+      result = result && (getSize()
+          == other.getSize());
+      result = result && (getCreateTime()
+          == other.getCreateTime());
       result = result && getContent()
           .equals(other.getContent());
       return result;
@@ -971,6 +1029,11 @@ public final class BrokerMessage {
       hash = (37 * hash) + OFFSET_FIELD_NUMBER;
       hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
           getOffset());
+      hash = (37 * hash) + SIZE_FIELD_NUMBER;
+      hash = (53 * hash) + getSize();
+      hash = (37 * hash) + CREATE_TIME_FIELD_NUMBER;
+      hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
+          getCreateTime());
       hash = (37 * hash) + CONTENT_FIELD_NUMBER;
       hash = (53 * hash) + getContent().hashCode();
       hash = (29 * hash) + unknownFields.hashCode();
@@ -1097,6 +1160,10 @@ public final class BrokerMessage {
 
         offset_ = 0L;
 
+        size_ = 0;
+
+        createTime_ = 0L;
+
         content_ = com.google.protobuf.ByteString.EMPTY;
 
         return this;
@@ -1124,6 +1191,8 @@ public final class BrokerMessage {
         result.topic_ = topic_;
         result.queue_ = queue_;
         result.offset_ = offset_;
+        result.size_ = size_;
+        result.createTime_ = createTime_;
         result.content_ = content_;
         onBuilt();
         return result;
@@ -1175,6 +1244,12 @@ public final class BrokerMessage {
         }
         if (other.getOffset() != 0L) {
           setOffset(other.getOffset());
+        }
+        if (other.getSize() != 0) {
+          setSize(other.getSize());
+        }
+        if (other.getCreateTime() != 0L) {
+          setCreateTime(other.getCreateTime());
         }
         if (other.getContent() != com.google.protobuf.ByteString.EMPTY) {
           setContent(other.getContent());
@@ -1326,15 +1401,67 @@ public final class BrokerMessage {
         return this;
       }
 
+      private int size_ ;
+      /**
+       * <code>optional int32 size = 4;</code>
+       */
+      public int getSize() {
+        return size_;
+      }
+      /**
+       * <code>optional int32 size = 4;</code>
+       */
+      public Builder setSize(int value) {
+        
+        size_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional int32 size = 4;</code>
+       */
+      public Builder clearSize() {
+        
+        size_ = 0;
+        onChanged();
+        return this;
+      }
+
+      private long createTime_ ;
+      /**
+       * <code>optional int64 create_time = 5;</code>
+       */
+      public long getCreateTime() {
+        return createTime_;
+      }
+      /**
+       * <code>optional int64 create_time = 5;</code>
+       */
+      public Builder setCreateTime(long value) {
+        
+        createTime_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional int64 create_time = 5;</code>
+       */
+      public Builder clearCreateTime() {
+        
+        createTime_ = 0L;
+        onChanged();
+        return this;
+      }
+
       private com.google.protobuf.ByteString content_ = com.google.protobuf.ByteString.EMPTY;
       /**
-       * <code>optional bytes content = 4;</code>
+       * <code>optional bytes content = 6;</code>
        */
       public com.google.protobuf.ByteString getContent() {
         return content_;
       }
       /**
-       * <code>optional bytes content = 4;</code>
+       * <code>optional bytes content = 6;</code>
        */
       public Builder setContent(com.google.protobuf.ByteString value) {
         if (value == null) {
@@ -1346,7 +1473,7 @@ public final class BrokerMessage {
         return this;
       }
       /**
-       * <code>optional bytes content = 4;</code>
+       * <code>optional bytes content = 6;</code>
        */
       public Builder clearContent() {
         
@@ -4261,20 +4388,20 @@ public final class BrokerMessage {
     java.lang.String[] descriptorData = {
       "\n\014broker.proto\022\003api\"?\n\014BaseResponse\022\036\n\010r" +
       "es_code\030\001 \001(\0162\014.api.ResCode\022\017\n\007res_msg\030\002" +
-      " \001(\t\"O\n\016MessageContent\022\r\n\005topic\030\001 \001(\t\022\r\n" +
-      "\005queue\030\002 \001(\005\022\016\n\006offset\030\003 \001(\003\022\017\n\007content\030" +
-      "\004 \001(\014\"C\n\022SendMessageRequest\022\r\n\005topic\030\001 \001" +
-      "(\t\022\r\n\005queue\030\002 \001(\005\022\017\n\007content\030\003 \001(\014\":\n\023Se" +
-      "ndMessageResponse\022#\n\010base_res\030\001 \001(\0132\021.ap" +
-      "i.BaseResponse\"Y\n\022PullMessageRequest\022\r\n\005" +
-      "topic\030\001 \001(\t\022\r\n\005queue\030\002 \001(\005\022\016\n\006offset\030\003 \001" +
-      "(\003\022\025\n\rmessage_count\030\004 \001(\005\"a\n\023PullMessage",
-      "Response\022#\n\010base_res\030\001 \001(\0132\021.api.BaseRes" +
-      "ponse\022%\n\010contents\030\002 \003(\0132\023.api.MessageCon" +
-      "tent*2\n\007ResCode\022\024\n\020RES_CODE_SUCCESS\020\000\022\021\n" +
-      "\rRES_CODE_FAIL\020\001B8\n\'com.github.wenweihu8" +
-      "6.distmq.client.apiB\rBrokerMessageb\006prot" +
-      "o3"
+      " \001(\t\"r\n\016MessageContent\022\r\n\005topic\030\001 \001(\t\022\r\n" +
+      "\005queue\030\002 \001(\005\022\016\n\006offset\030\003 \001(\003\022\014\n\004size\030\004 \001" +
+      "(\005\022\023\n\013create_time\030\005 \001(\003\022\017\n\007content\030\006 \001(\014" +
+      "\"C\n\022SendMessageRequest\022\r\n\005topic\030\001 \001(\t\022\r\n" +
+      "\005queue\030\002 \001(\005\022\017\n\007content\030\003 \001(\014\":\n\023SendMes" +
+      "sageResponse\022#\n\010base_res\030\001 \001(\0132\021.api.Bas" +
+      "eResponse\"Y\n\022PullMessageRequest\022\r\n\005topic" +
+      "\030\001 \001(\t\022\r\n\005queue\030\002 \001(\005\022\016\n\006offset\030\003 \001(\003\022\025\n",
+      "\rmessage_count\030\004 \001(\005\"a\n\023PullMessageRespo" +
+      "nse\022#\n\010base_res\030\001 \001(\0132\021.api.BaseResponse" +
+      "\022%\n\010contents\030\002 \003(\0132\023.api.MessageContent*" +
+      "2\n\007ResCode\022\024\n\020RES_CODE_SUCCESS\020\000\022\021\n\rRES_" +
+      "CODE_FAIL\020\001B8\n\'com.github.wenweihu86.dis" +
+      "tmq.client.apiB\rBrokerMessageb\006proto3"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
         new com.google.protobuf.Descriptors.FileDescriptor.    InternalDescriptorAssigner() {
@@ -4299,7 +4426,7 @@ public final class BrokerMessage {
     internal_static_api_MessageContent_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_api_MessageContent_descriptor,
-        new java.lang.String[] { "Topic", "Queue", "Offset", "Content", });
+        new java.lang.String[] { "Topic", "Queue", "Offset", "Size", "CreateTime", "Content", });
     internal_static_api_SendMessageRequest_descriptor =
       getDescriptor().getMessageTypes().get(2);
     internal_static_api_SendMessageRequest_fieldAccessorTable = new

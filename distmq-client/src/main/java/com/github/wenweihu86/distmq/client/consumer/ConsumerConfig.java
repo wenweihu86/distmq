@@ -11,7 +11,7 @@ public class ConsumerConfig extends CommonConfig {
     private String consumerGroup;
     private String topic;
     private String consumerId = UUID.randomUUID().toString();
-    private int maxMessageCountPerRequest = 100;
+    private int maxMessageCountPerRequest = 50;
 
     public String getConsumerGroup() {
         return consumerGroup;

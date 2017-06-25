@@ -40,7 +40,6 @@ public class BrokerAPIImpl implements BrokerAPI {
         // 验证queue存在，并且属于该sharding
         ZKData zkData = ZKData.getInstance();
         GlobalConf conf = GlobalConf.getInstance();
-        zkData.getTopicLock().lock();
         Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
         Map<Integer, Integer> queueMap = topicMap.get(request.getTopic());
         // topic由producer提前创建完成，所以这里会校验不存在的话，直接返回失败
@@ -48,7 +47,6 @@ public class BrokerAPIImpl implements BrokerAPI {
                 || !queueMap.containsKey(request.getQueue())
                 || queueMap.get(request.getQueue()) != conf.getShardingId()) {
             queueMap = zkClient.readTopicInfo(request.getTopic());
-
             zkData.getTopicLock().lock();
             try {
                 zkData.getTopicMap().put(request.getTopic(), queueMap);
@@ -77,7 +75,12 @@ public class BrokerAPIImpl implements BrokerAPI {
             RPCClient rpcClient = raftNode.getPeerMap().get(raftNode.getLeaderId()).getRpcClient();
             BrokerAPI brokerAPI = RPCProxy.getProxy(rpcClient, BrokerAPI.class);
             BrokerMessage.SendMessageResponse responseFromLeader = brokerAPI.sendMessage(request);
-            responseBuilder.mergeFrom(responseFromLeader);
+            if (responseFromLeader == null) {
+                baseResBuilder.setResMsg("leader timeout");
+                responseBuilder.setBaseRes(baseResBuilder);
+            } else {
+                responseBuilder.mergeFrom(responseFromLeader);
+            }
         } else {
             // 数据同步写入raft集群
             byte[] data = request.toByteArray();

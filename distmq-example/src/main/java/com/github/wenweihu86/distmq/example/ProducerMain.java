@@ -14,7 +14,7 @@ public class ProducerMain {
         Producer producer = new Producer(config);
         String topic = "example-topic";
         for (int i = 0; i < 100; i++) {
-            String message = "hello distmq:" + i;
+            String message = "hello-distmq-" + i;
             boolean success = producer.send(topic, message.getBytes());
             if (success) {
                 System.out.printf("send message success, topic=%s, message=%s\n",

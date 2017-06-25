@@ -20,7 +20,6 @@ public class Consumer implements Runnable {
     private ZKClient zkClient;
     private ScheduledExecutorService timer = Executors.newScheduledThreadPool(1);
     private MessageListener listener;
-    private long offset;
 
     public Consumer(ConsumerConfig config, MessageListener listener) {
         this.config = config;
@@ -31,7 +30,18 @@ public class Consumer implements Runnable {
         zkClient.subscribeConsumer(config.getConsumerGroup());
         zkClient.subscribeBroker();
         zkClient.subscribeTopic();
-        this.offset = zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic());
+        // 更新offset
+        ZKData zkData = ZKData.getInstance();
+        Map<String, Map<Integer, Long>> topicOffsetMap = zkData.getConsumerOffsetMap().get(config.getConsumerGroup());
+        if (topicOffsetMap == null) {
+            topicOffsetMap = new HashMap<>();
+            zkData.getConsumerOffsetMap().put(config.getConsumerGroup(), topicOffsetMap);
+        }
+        Map<Integer, Long> queueOffsetMap = topicOffsetMap.get(config.getTopic());
+        if (queueOffsetMap == null) {
+            queueOffsetMap = new HashMap<>();
+        }
+        queueOffsetMap.putAll(zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic()));
     }
 
     public void start() {
@@ -44,6 +54,21 @@ public class Consumer implements Runnable {
         for (Map.Entry<Integer, Integer> entry : queueMap.entrySet()) {
             Integer queueId = entry.getKey();
             Integer shardingId = entry.getValue();
+            long offset;
+            // 获取offset
+            ZKData zkData = ZKData.getInstance();
+            zkData.getConsumerOffsetLock().lock();
+            try {
+                offset = zkData.getConsumerOffsetMap()
+                        .get(config.getConsumerGroup())
+                        .get(config.getTopic())
+                        .get(queueId);
+            } catch (Exception ex) {
+                offset = 0;
+            } finally {
+                zkData.getConsumerOffsetLock().unlock();
+            }
+
             BrokerMessage.PullMessageRequest request = BrokerMessage.PullMessageRequest.newBuilder()
                     .setTopic(config.getTopic())
                     .setQueue(queueId)
@@ -52,7 +77,6 @@ public class Consumer implements Runnable {
                     .build();
 
             List<String> brokers;
-            ZKData zkData = ZKData.getInstance();
             zkData.getBrokerLock().lock();
             try {
                 brokers = zkData.getBrokerMap().get(shardingId);
@@ -77,8 +101,25 @@ public class Consumer implements Runnable {
                 if (response.getContentsCount() > 0) {
                     listener.consumeMessage(response.getContentsList());
                     BrokerMessage.MessageContent lastMessage = response.getContents(response.getContentsCount() - 1);
-                    offset = lastMessage.getOffset() + 1;
-                    zkClient.updateConsumerOffset(config.getConsumerGroup(), config.getTopic(), offset);
+                    offset = lastMessage.getOffset() + lastMessage.getSize();
+                    zkClient.updateConsumerOffset(config.getConsumerGroup(), config.getTopic(), queueId, offset);
+                    // 更新offset
+                    zkData.getConsumerOffsetLock().lock();
+                    try {
+                        Map<String, Map<Integer, Long>> topicOffsetMap
+                                = zkData.getConsumerOffsetMap().get(config.getConsumerGroup());
+                        if (topicOffsetMap == null) {
+                            topicOffsetMap = new HashMap<>();
+                            zkData.getConsumerOffsetMap().put(config.getConsumerGroup(), topicOffsetMap);
+                        }
+                        Map<Integer, Long> queueOffsetMap = topicOffsetMap.get(config.getTopic());
+                        if (queueOffsetMap == null) {
+                            queueOffsetMap = new HashMap<>();
+                        }
+                        queueOffsetMap.put(queueId, offset);
+                    } finally {
+                        zkData.getConsumerOffsetLock().unlock();
+                    }
                 }
             }
         }

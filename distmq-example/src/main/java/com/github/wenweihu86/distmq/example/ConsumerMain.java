@@ -24,7 +24,7 @@ public class ConsumerMain {
                     String topic = message.getTopic();
                     int queue = message.getQueue();
                     long offset = message.getOffset();
-                    System.out.printf("topic=%s, queue=%d, offset=%d, message=%s\n",
+                    System.out.printf("receive message: topic=%s, queue=%d, offset=%d, message=%s\n",
                             topic, queue, offset, content);
                 }
             }

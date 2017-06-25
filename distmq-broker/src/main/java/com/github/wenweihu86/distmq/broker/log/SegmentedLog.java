@@ -41,7 +41,7 @@ public class SegmentedLog {
         return lastSegment.getEndOffset();
     }
 
-    public long append(byte[] messageContent) {
+    public boolean append(BrokerMessage.MessageContent.Builder message) {
         boolean isNeedNewSegmentFile = false;
         int segmentSize = startOffsetSegmentMap.size();
         try {
@@ -53,7 +53,7 @@ public class SegmentedLog {
                     isNeedNewSegmentFile = true;
                 } else {
                     int maxSegmentSize = GlobalConf.getInstance().getMaxSegmentSize();
-                    if (lastSegment.getFileSize() + messageContent.length > maxSegmentSize) {
+                    if (lastSegment.getFileSize() + message.build().getSerializedSize() > maxSegmentSize) {
                         isNeedNewSegmentFile = true;
                         // 最后一个segment的文件close并改名
                         lastSegment.close();
@@ -89,13 +89,13 @@ public class SegmentedLog {
             } else {
                 newSegment = startOffsetSegmentMap.lastEntry().getValue();
             }
-            return newSegment.append(messageContent);
+            return newSegment.append(message);
         } catch (IOException ex) {
             throw new RuntimeException("meet exception, msg=" + ex.getMessage());
         }
     }
 
-    public byte[] read(long offset) {
+    public BrokerMessage.MessageContent read(long offset) {
         Map.Entry<Long, Segment> entry = startOffsetSegmentMap.floorEntry(offset);
         if (entry == null) {
             LOG.warn("message not found, offset={}", offset);
@@ -116,8 +116,7 @@ public class SegmentedLog {
     private void validateSegments() {
         long lastEndOffset = 0;
         for (Segment segment : startOffsetSegmentMap.values()) {
-            if (lastEndOffset > 0 && segment.getStartOffset()
-                    != lastEndOffset + Segment.SEGMENT_HEADER_LENGTH) {
+            if (lastEndOffset > 0 && segment.getStartOffset() != lastEndOffset) {
                 throw new RuntimeException("segment dir not valid:" + segmentDir);
             }
             lastEndOffset = segment.getEndOffset();

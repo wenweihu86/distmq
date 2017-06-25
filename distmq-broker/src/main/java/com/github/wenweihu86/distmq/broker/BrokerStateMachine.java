@@ -68,8 +68,12 @@ public class BrokerStateMachine implements StateMachine {
     public void apply(byte[] dataBytes) {
         try {
             BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.parseFrom(dataBytes);
+            BrokerMessage.MessageContent.Builder message = BrokerMessage.MessageContent.newBuilder()
+                    .setTopic(request.getTopic())
+                    .setQueue(request.getQueue())
+                    .setContent(request.getContent());
             SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
-            segmentedLog.append(request.getContent().toByteArray());
+            segmentedLog.append(message);
         } catch (Exception ex) {
             LOG.warn("apply exception:", ex);
         }
@@ -80,22 +84,14 @@ public class BrokerStateMachine implements StateMachine {
         SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
         int readCount = 0;
         long offset = request.getOffset();
-        if (offset == 0) {
-            offset = Segment.SEGMENT_HEADER_LENGTH;
-        }
         while (readCount < request.getMessageCount()) {
-            byte[] messageBytes = segmentedLog.read(offset);
-            if (messageBytes == null) {
+            BrokerMessage.MessageContent message = segmentedLog.read(offset);
+            if (message == null) {
                 break;
             }
-            BrokerMessage.MessageContent message = BrokerMessage.MessageContent.newBuilder()
-                    .setTopic(request.getTopic())
-                    .setQueue(request.getQueue())
-                    .setOffset(offset)
-                    .setContent(ByteString.copyFrom(messageBytes))
-                    .build();
             responseBuilder.addContents(message);
-            offset += messageBytes.length + Segment.MESSAGE_HEADER_LENGTH;
+            offset = message.getOffset() + message.getSize();
+            readCount++;
         }
         return responseBuilder.build();
     }

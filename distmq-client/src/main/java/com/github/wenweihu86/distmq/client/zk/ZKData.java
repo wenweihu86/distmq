@@ -34,6 +34,11 @@ public class ZKData {
     private List<String> consumerIds = new ArrayList<>();
     private Lock consumerIdsLock = new ReentrantLock();
 
+    // consumer offset
+    // consumerGroup -> (topic -> (queue -> offset))
+    private Map<String, Map<String, Map<Integer, Long>>> consumerOffsetMap = new HashMap<>();
+    private Lock consumerOffsetLock = new ReentrantLock();
+
     public static void setInstance(ZKData instance) {
         ZKData.instance = instance;
     }
@@ -80,5 +85,13 @@ public class ZKData {
 
     public void setConsumerIdsLock(Lock consumerIdsLock) {
         this.consumerIdsLock = consumerIdsLock;
+    }
+
+    public Map<String, Map<String, Map<Integer, Long>>> getConsumerOffsetMap() {
+        return consumerOffsetMap;
+    }
+
+    public Lock getConsumerOffsetLock() {
+        return consumerOffsetLock;
     }
 }

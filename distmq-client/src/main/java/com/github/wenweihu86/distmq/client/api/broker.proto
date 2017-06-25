@@ -18,7 +18,9 @@ message MessageContent {
     string topic = 1;
     int32 queue = 2;
     int64 offset = 3;
-    bytes content = 4;
+    int32 size = 4;
+    int64 create_time = 5;
+    bytes content = 6;
 }
 
 message SendMessageRequest {

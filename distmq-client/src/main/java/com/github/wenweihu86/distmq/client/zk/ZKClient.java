@@ -12,6 +12,7 @@ import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.CuratorWatcher;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
@@ -203,31 +204,50 @@ public class ZKClient {
         }
     }
 
-    public long readConsumerOffset(String consumerGroup, String topic) {
-        long offset = 0;
+    /**
+     * 读取topic消费进度
+     * @param consumerGroup 消费组名称
+     * @param topic topic
+     * @return queue -> offset映射
+     */
+    public Map<Integer, Long> readConsumerOffset(String consumerGroup, String topic) {
+        Map<Integer, Long> queueOffsetMap = new HashMap<>();
         String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
         try {
-            byte[] dataBytes = zkClient.getData().forPath(path);
-            if (dataBytes != null) {
-                offset = Long.valueOf(new String(dataBytes));
+            List<String> queues = zkClient.getChildren().forPath(path);
+            for (String queue : queues) {
+                String queuePath = path + "/" + queue;
+                byte[] dataBytes = zkClient.getData().forPath(queuePath);
+                if (dataBytes != null) {
+                    Long offset = Long.valueOf(new String(dataBytes));
+                    queueOffsetMap.put(Integer.valueOf(queue), offset);
+                }
             }
-            LOG.info("readConsumerOffset success, consumerGroup={}, topic={}, offset={}",
-                    consumerGroup, topic, offset);
+            LOG.info("readConsumerOffset success, consumerGroup={}, topic={}", consumerGroup, topic);
         } catch (Exception ex) {
             LOG.debug("readConsumerOffset exception:", ex);
         }
-        return offset;
+        return queueOffsetMap;
     }
 
-    public void updateConsumerOffset(String consumerGroup, String topic, long offset) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
-        try {
-            byte[] dataBytes = String.valueOf(offset).getBytes();
-            zkClient.setData().forPath(path, dataBytes);
-            LOG.info("updateConsumerOffset success, consumerGroup={}, topic={}, offset={}",
-                    consumerGroup, topic, offset);
-        } catch (Exception ex) {
-            LOG.warn("updateConsumerOffset exception:", ex);
+    public void updateConsumerOffset(String consumerGroup, String topic, Integer queueId, long offset) {
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic + "/" + queueId;
+        int maxTryCount = 2;
+        int currentTryCount = 0;
+        while (currentTryCount++ < maxTryCount) {
+            try {
+                byte[] dataBytes = String.valueOf(offset).getBytes();
+                zkClient.setData().forPath(path, dataBytes);
+                LOG.info("updateConsumerOffset success, consumerGroup={}, topic={}, queue={}, offset={}",
+                        consumerGroup, topic, queueId, offset);
+                break;
+            } catch (KeeperException.NoNodeException ex1) {
+                createPath(path);
+                continue;
+            } catch (Exception ex2) {
+                LOG.warn("updateConsumerOffset exception:", ex2);
+                break;
+            }
         }
     }
 
