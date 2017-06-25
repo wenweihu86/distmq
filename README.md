@@ -8,4 +8,5 @@ Distributed Message Queue based on Raft
 * raft snapshot使用硬链接
 * 支持多consumerGroup和多topic
 * 支持broker failover
+* broker消息存储引擎加入mmap功能
 * ......
