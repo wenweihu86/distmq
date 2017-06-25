@@ -55,21 +55,21 @@ public class SegmentedLog {
                     int maxSegmentSize = GlobalConf.getInstance().getMaxSegmentSize();
                     if (lastSegment.getFileSize() + messageContent.length > maxSegmentSize) {
                         isNeedNewSegmentFile = true;
+                        // 最后一个segment的文件close并改名
+                        lastSegment.close();
+                        lastSegment.setCanWrite(false);
+                        String newFileName = String.format("%020d-%020d",
+                                lastSegment.getStartOffset(), lastSegment.getEndOffset());
+                        String newFullFileName = segmentDir + File.separator + newFileName;
+                        File newFile = new File(newFullFileName);
+                        newFile.createNewFile();
+                        String oldFullFileName = segmentDir + File.separator + lastSegment.getFileName();
+                        File oldFile = new File(oldFullFileName);
+                        oldFile.renameTo(newFile);
+                        lastSegment.setFileName(newFileName);
+                        lastSegment.setRandomAccessFile(RaftFileUtils.openFile(segmentDir, newFileName, "r"));
+                        lastSegment.setChannel(lastSegment.getRandomAccessFile().getChannel());
                     }
-                    // 最后一个segment的文件close并改名
-                    lastSegment.close();
-                    lastSegment.setCanWrite(false);
-                    String newFileName = String.format("%020d-%020d",
-                            lastSegment.getStartOffset(), lastSegment.getEndOffset());
-                    String newFullFileName = segmentDir + File.separator + newFileName;
-                    File newFile = new File(newFullFileName);
-                    newFile.createNewFile();
-                    String oldFullFileName = segmentDir + File.separator + lastSegment.getFileName();
-                    File oldFile = new File(oldFullFileName);
-                    oldFile.renameTo(newFile);
-                    lastSegment.setFileName(newFileName);
-                    lastSegment.setRandomAccessFile(RaftFileUtils.openFile(segmentDir, newFileName, "r"));
-                    lastSegment.setChannel(lastSegment.getRandomAccessFile().getChannel());
                 }
             }
 
@@ -77,7 +77,7 @@ public class SegmentedLog {
             // 新建segment文件
             if (isNeedNewSegmentFile) {
                 // open new segment file
-                long newStartOffset = getLastEndOffset() + Segment.SEGMENT_HEADER_LENGTH;
+                long newStartOffset = getLastEndOffset();
                 String newSegmentFileName = String.format("open-%d", newStartOffset);
                 String newFullFileName = segmentDir + File.separator + newSegmentFileName;
                 File newSegmentFile = new File(newFullFileName);
@@ -85,6 +85,7 @@ public class SegmentedLog {
                     newSegmentFile.createNewFile();
                 }
                 newSegment = new Segment(segmentDir, newSegmentFileName);
+                startOffsetSegmentMap.put(newSegment.getStartOffset(), newSegment);
             } else {
                 newSegment = startOffsetSegmentMap.lastEntry().getValue();
             }

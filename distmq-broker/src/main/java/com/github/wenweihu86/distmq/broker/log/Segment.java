@@ -88,14 +88,19 @@ public class Segment {
                 byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
                 byteBuffer.putInt(messageContent.length);
                 byteBuffer.put(messageContent);
+                byteBuffer.flip();
                 writeSize = channel.write(byteBuffer);
+                channel.force(true);
                 offset = startOffset;
                 endOffset = startOffset + writeSize;
             } else {
                 byteBuffer.putLong(BrokerUtils.getCRC32(messageContent));
                 byteBuffer.putInt(messageContent.length);
                 byteBuffer.put(messageContent);
+                byteBuffer.flip();
+                channel.position(endOffset);
                 writeSize = channel.write(byteBuffer);
+                channel.force(true);
                 offset = endOffset;
                 endOffset += writeSize;
             }
@@ -119,11 +124,12 @@ public class Segment {
                 LOG.warn("read message error");
                 return null;
             }
+            headerBuffer.flip();
             long crc32 = headerBuffer.getLong();
             int messageLen = headerBuffer.getInt();
             ByteBuffer messageContentBuffer = ByteBuffer.allocate(messageLen);
             readLen = channel.read(messageContentBuffer);
-            if (readLen < messageLen) {
+            if (readLen != messageLen) {
                 LOG.warn("read message error");
                 return null;
             }

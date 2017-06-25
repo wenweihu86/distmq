@@ -31,20 +31,14 @@ public class Producer {
 
     public boolean send(String topic, byte[] messageBytes) {
         ZKData zkData = ZKData.getInstance();
-        Map<Integer, Integer> queueMap;
-        zkData.getTopicLock().lock();
-        try {
-            queueMap = zkData.getTopicMap().get(topic);
-        } finally {
-            zkData.getTopicLock().unlock();
-        }
         Integer queueId;
         Integer shardingId;
-        if (queueMap == null) {
+        if (zkData.getTopicMap().get(topic) == null) {
             zkClient.registerTopic(topic, config.getQueueCountPerTopic());
             zkData.getTopicLock().lock();
             try {
-                while (!zkData.getTopicMap().containsKey(topic)) {
+                while (zkData.getTopicMap().get(topic) == null
+                        || zkData.getTopicMap().get(topic).size() != config.getQueueCountPerTopic()) {
                     zkData.getTopicCondition().awaitUninterruptibly();
                 }
             } finally {
@@ -54,7 +48,7 @@ public class Producer {
 
         zkData.getTopicLock().lock();
         try {
-            queueMap = zkData.getTopicMap().get(topic);
+            Map<Integer, Integer> queueMap = zkData.getTopicMap().get(topic);
             int queueCount = queueMap.size();
             int randomIndex = ThreadLocalRandom.current().nextInt(0, queueCount);
             Integer[] queueArray = queueMap.keySet().toArray(new Integer[0]);

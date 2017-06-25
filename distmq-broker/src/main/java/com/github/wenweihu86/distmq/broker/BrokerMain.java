@@ -26,6 +26,10 @@ public class BrokerMain {
         List<RaftMessage.Server> servers = conf.getServers();
         String dataDir = conf.getDataDir();
 
+        // 初始化zookeeper
+        ZKConf zkConf = conf.getZkConf();
+        ZKClient zkClient = new ZKClient(zkConf);
+
         // 初始化RPCServer
         RPCServer server = new RPCServer(localServer.getEndPoint().getPort());
         // 应用状态机
@@ -41,19 +45,17 @@ public class BrokerMain {
         RaftClientService raftClientService = new RaftClientServiceImpl(raftNode);
         server.registerService(raftClientService);
         // 注册应用自己提供的服务
-        BrokerAPIImpl brokerAPI = new BrokerAPIImpl(raftNode, stateMachine);
+        BrokerAPIImpl brokerAPI = new BrokerAPIImpl(raftNode, stateMachine, zkClient);
         server.registerService(brokerAPI);
         // 启动RPCServer，初始化Raft节点
         server.start();
         raftNode.init();
-        // 注册zk
-        ZKConf zkConf = conf.getZkConf();
-        ZKClient zkClient = new ZKClient(zkConf);
+
+        // 订阅broker和topic的变化
         zkClient.subscribeBroker();
         zkClient.subscribeTopic();
         // 等成为raft集群成员后，才能注册到zk
-
-        while (ConfigurationUtils.containsServer(
+        while (!ConfigurationUtils.containsServer(
                 raftNode.getConfiguration(), conf.getLocalServer().getServerId())) {
             try {
                 Thread.sleep(1000);

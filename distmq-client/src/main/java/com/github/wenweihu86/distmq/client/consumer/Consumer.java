@@ -32,7 +32,10 @@ public class Consumer implements Runnable {
         zkClient.subscribeBroker();
         zkClient.subscribeTopic();
         this.offset = zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic());
-        this.timer.scheduleAtFixedRate(this, 1000, 5000, TimeUnit.MILLISECONDS);
+    }
+
+    public void start() {
+        timer.scheduleAtFixedRate(this, 1000, 5000, TimeUnit.MILLISECONDS);
     }
 
     @Override
