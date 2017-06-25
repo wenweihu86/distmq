@@ -109,7 +109,7 @@ public class Segment {
 
     public BrokerMessage.MessageContent read(long offset) {
         if (offset >= startOffset + fileSize) {
-            LOG.warn("invalid offset={}", offset);
+            LOG.debug("invalid offset={}", offset);
             return null;
         }
         try {

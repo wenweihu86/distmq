@@ -3,6 +3,7 @@ package com.github.wenweihu86.distmq.client.consumer;
 import com.github.wenweihu86.distmq.client.BrokerClient;
 import com.github.wenweihu86.distmq.client.BrokerClientManager;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
+import com.github.wenweihu86.distmq.client.utils.JsonUtil;
 import com.github.wenweihu86.distmq.client.zk.ZKClient;
 import com.github.wenweihu86.distmq.client.zk.ZKData;
 import org.slf4j.Logger;
@@ -31,17 +32,23 @@ public class Consumer implements Runnable {
         zkClient.subscribeBroker();
         zkClient.subscribeTopic();
         // 更新offset
+        Map<Integer, Long> queueOffsetMap = zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic());
         ZKData zkData = ZKData.getInstance();
-        Map<String, Map<Integer, Long>> topicOffsetMap = zkData.getConsumerOffsetMap().get(config.getConsumerGroup());
+        Map<String, Map<Integer, Long>> topicOffsetMap
+                = zkData.getConsumerOffsetMap().get(config.getConsumerGroup());
         if (topicOffsetMap == null) {
             topicOffsetMap = new HashMap<>();
+            topicOffsetMap.put(config.getTopic(), queueOffsetMap);
             zkData.getConsumerOffsetMap().put(config.getConsumerGroup(), topicOffsetMap);
+        } else {
+            Map<Integer, Long> oldQueueOffsetMap = topicOffsetMap.get(config.getTopic());
+            if (oldQueueOffsetMap == null) {
+                topicOffsetMap.put(config.getTopic(), queueOffsetMap);
+            } else {
+                oldQueueOffsetMap.putAll(queueOffsetMap);
+            }
         }
-        Map<Integer, Long> queueOffsetMap = topicOffsetMap.get(config.getTopic());
-        if (queueOffsetMap == null) {
-            queueOffsetMap = new HashMap<>();
-        }
-        queueOffsetMap.putAll(zkClient.readConsumerOffset(config.getConsumerGroup(), config.getTopic()));
+        LOG.info("new consumer offset={}", JsonUtil.toJson(zkData.getConsumerOffsetMap()));
     }
 
     public void start() {
@@ -109,14 +116,22 @@ public class Consumer implements Runnable {
                         Map<String, Map<Integer, Long>> topicOffsetMap
                                 = zkData.getConsumerOffsetMap().get(config.getConsumerGroup());
                         if (topicOffsetMap == null) {
+                            Map<Integer, Long> queueOffsetMap = new HashMap<>();
+                            queueOffsetMap.put(queueId, offset);
                             topicOffsetMap = new HashMap<>();
+                            topicOffsetMap.put(config.getTopic(), queueOffsetMap);
                             zkData.getConsumerOffsetMap().put(config.getConsumerGroup(), topicOffsetMap);
+                        } else {
+                            Map<Integer, Long> queueOffsetMap = topicOffsetMap.get(config.getTopic());
+                            if (queueOffsetMap == null) {
+                                queueOffsetMap = new HashMap<>();
+                                queueOffsetMap.put(queueId, offset);
+                                topicOffsetMap.put(config.getTopic(), queueOffsetMap);
+                            } else {
+                                queueOffsetMap.put(queueId, offset);
+                            }
                         }
-                        Map<Integer, Long> queueOffsetMap = topicOffsetMap.get(config.getTopic());
-                        if (queueOffsetMap == null) {
-                            queueOffsetMap = new HashMap<>();
-                        }
-                        queueOffsetMap.put(queueId, offset);
+                        LOG.debug("new consumer offset={}", JsonUtil.toJson(zkData.getConsumerOffsetMap()));
                     } finally {
                         zkData.getConsumerOffsetLock().unlock();
                     }
