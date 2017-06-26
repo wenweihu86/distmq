@@ -10,6 +10,8 @@ import java.io.*;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by wenweihu86 on 2017/6/19.
@@ -20,8 +22,7 @@ public class SegmentedLog {
 
     private String segmentDir;
     private TreeMap<Long, Segment> startOffsetSegmentMap = new TreeMap<>();
-    // segment log占用的内存大小，用于判断是否需要做snapshot
-    private volatile long totalSize;
+    private Lock lock = new ReentrantLock();
 
     public SegmentedLog(String segmentDir) {
         this.segmentDir = segmentDir;
@@ -33,17 +34,10 @@ public class SegmentedLog {
         validateSegments();
     }
 
-    public long getLastEndOffset() {
-        if (startOffsetSegmentMap.size() == 0) {
-            return 0;
-        }
-        Segment lastSegment = startOffsetSegmentMap.lastEntry().getValue();
-        return lastSegment.getEndOffset();
-    }
-
     public boolean append(BrokerMessage.MessageContent.Builder message) {
         boolean isNeedNewSegmentFile = false;
         int segmentSize = startOffsetSegmentMap.size();
+        lock.lock();
         try {
             if (segmentSize == 0) {
                 isNeedNewSegmentFile = true;
@@ -92,17 +86,24 @@ public class SegmentedLog {
             return newSegment.append(message);
         } catch (IOException ex) {
             throw new RuntimeException("meet exception, msg=" + ex.getMessage());
+        } finally {
+            lock.unlock();
         }
     }
 
     public BrokerMessage.MessageContent read(long offset) {
-        Map.Entry<Long, Segment> entry = startOffsetSegmentMap.floorEntry(offset);
-        if (entry == null) {
-            LOG.warn("message not found, offset={}", offset);
-            return null;
+        lock.lock();
+        try {
+            Map.Entry<Long, Segment> entry = startOffsetSegmentMap.floorEntry(offset);
+            if (entry == null) {
+                LOG.warn("message not found, offset={}", offset);
+                return null;
+            }
+            Segment segment = entry.getValue();
+            return segment.read(offset);
+        } finally {
+            lock.unlock();
         }
-        Segment segment = entry.getValue();
-        return segment.read(offset);
     }
 
     private void readSegments() {
@@ -121,6 +122,14 @@ public class SegmentedLog {
             }
             lastEndOffset = segment.getEndOffset();
         }
+    }
+
+    private long getLastEndOffset() {
+        if (startOffsetSegmentMap.size() == 0) {
+            return 0;
+        }
+        Segment lastSegment = startOffsetSegmentMap.lastEntry().getValue();
+        return lastSegment.getEndOffset();
     }
 
 }

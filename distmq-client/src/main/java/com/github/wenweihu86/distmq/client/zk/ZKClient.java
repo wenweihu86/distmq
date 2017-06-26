@@ -147,9 +147,30 @@ public class ZKClient {
                         .creatingParentsIfNeeded()
                         .forPath(queuePath, queueData);
             } catch (Exception ex) {
-                LOG.warn("registerTopic exception:", ex);
+                LOG.warn("registerTopic failed, queue={}", queueId);
             }
         }
+    }
+
+    public Map<Integer, Integer> readTopic(String topic) {
+        Map<Integer, Integer> queueMap = new HashMap<>();
+        ZKData zkData = ZKData.getInstance();
+        String path = zkConf.getBasePath() + "/topics/" + topic;
+        try {
+            List<String> queues = zkClient.getChildren().forPath(path);
+            for (String queue : queues) {
+                String queuePath = path + "/" + queue;
+                byte[] dataBytes = zkClient.getData().forPath(queuePath);
+                if (dataBytes != null) {
+                    Integer shardingId = Integer.valueOf(new String(dataBytes));
+                    queueMap.put(Integer.valueOf(queue), shardingId);
+                }
+            }
+            LOG.info("readTopic success, topic={}", topic);
+        } catch (Exception ex) {
+            LOG.warn("readTopic exception:", ex);
+        }
+        return queueMap;
     }
 
     // 启动时调用，所以不用加锁
@@ -278,8 +299,9 @@ public class ZKClient {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
+            String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
+            LOG.info("get zookeeper notification for path={}", path);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
                 try {
                     List<String> consumerIds = zkClient.getChildren().forPath(path);
                     ZKData zkData = ZKData.getInstance();
@@ -288,6 +310,9 @@ public class ZKClient {
                     LOG.warn("subscribeConsumer exception:", ex);
                 }
             }
+            zkClient.getChildren()
+                    .usingWatcher(new ConsumerWatcher(consumerGroup))
+                    .forPath(path);
         }
     }
 
@@ -296,8 +321,9 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
+            String brokerPath = zkConf.getBasePath() + "/brokers";
+            LOG.info("get zookeeper notification for path={}", brokerPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String brokerPath = zkConf.getBasePath() + "/brokers";
                 List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
 
                 List<String> oldShardings = new ArrayList<>();
@@ -354,6 +380,9 @@ public class ZKClient {
                     }
                 }
             }
+            zkClient.getChildren()
+                    .usingWatcher(new BrokersWatcher())
+                    .forPath(brokerPath);
         }
     }
 
@@ -368,8 +397,9 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
+            String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
+            LOG.info("get zookeeper notification for path={}", shardingPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
                 List<String> newBrokerAddressList = zkClient.getChildren().forPath(shardingPath);
                 List<String> oldBrokerAddressList;
                 zkData.getBrokerLock().lock();
@@ -414,6 +444,9 @@ public class ZKClient {
                     }
                 }
             }
+            zkClient.getChildren()
+                    .usingWatcher(new BrokerShardingWather(shardingId))
+                    .forPath(shardingPath);
         }
     }
 
@@ -422,9 +455,9 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
+            String topicParentPath = zkConf.getBasePath() + "/topics";
+            LOG.info("get zookeeper notification for path={}", topicParentPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String topicParentPath = zkConf.getBasePath() + "/topics";
-                LOG.info("get zookeeper notification for path={}", topicParentPath);
                 List<String> newTopics = zkClient.getChildren().forPath(topicParentPath);
                 List<String> oldTopics;
                 zkData.getTopicLock().lockInterruptibly();
@@ -437,8 +470,8 @@ public class ZKClient {
                 Collection<String> deletedTopics = CollectionUtils.subtract(oldTopics, newTopics);
                 for (String topic : addedTopics) {
                     String topicPath = topicParentPath + "/" + topic;
-                    zkClient.getChildren().usingWatcher(
-                            new TopicWatcher(topic))
+                    zkClient.getChildren()
+                            .usingWatcher(new TopicWatcher(topic))
                             .forPath(topicPath);
                     Map<Integer, Integer> queueMap = readTopicInfo(topic);
 
@@ -455,12 +488,14 @@ public class ZKClient {
                 try {
                     for (String topic : deletedTopics) {
                         zkData.getTopicMap().remove(topic);
-                        // TODO: is need remove watcher?
                     }
                 } finally {
                     zkData.getTopicLock().unlock();
                 }
             }
+            zkClient.getChildren()
+                    .usingWatcher(new TopicsWather())
+                    .forPath(topicParentPath);
         }
     }
 
@@ -475,9 +510,9 @@ public class ZKClient {
         @Override
         public void process(WatchedEvent event) throws Exception {
             ZKData zkData = ZKData.getInstance();
+            String topicPath = zkConf.getBasePath() + "/topics/" + topic;
+            LOG.info("get zookeeper notification for path={}", topicPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                String topicPath = zkConf.getBasePath() + "/topics/" + topic;
-                LOG.info("get zookeeper notification for path={}", topicPath);
                 List<String> newQueues = zkClient.getChildren().forPath(topicPath);
                 List<Integer> newQueueIds = new ArrayList<>();
                 for (String queue : newQueues) {
@@ -517,6 +552,9 @@ public class ZKClient {
                     zkData.getTopicLock().unlock();
                 }
             }
+            zkClient.getChildren()
+                    .usingWatcher(new TopicWatcher(topic))
+                    .forPath(topicPath);
         }
     }
 

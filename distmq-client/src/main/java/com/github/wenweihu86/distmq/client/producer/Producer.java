@@ -31,21 +31,39 @@ public class Producer {
 
     public boolean send(String topic, byte[] messageBytes) {
         ZKData zkData = ZKData.getInstance();
-        Integer queueId;
-        Integer shardingId;
-        if (zkData.getTopicMap().get(topic) == null) {
+        // 查询topic是否存在
+        boolean topicExist = false;
+        zkData.getTopicLock().lock();
+        try {
+            Map<Integer, Integer> queueMap = zkData.getTopicMap().get(topic);
+            if (queueMap != null && queueMap.size() > 0) {
+                topicExist = true;
+            }
+        } finally {
+            zkData.getTopicLock().unlock();
+        }
+
+        // 如果topic尚不存在，则创建
+        if (!topicExist) {
             zkClient.registerTopic(topic, config.getQueueCountPerTopic());
+            Map<Integer, Integer> queueMap = zkClient.readTopicInfo(topic);
+            if (queueMap.size() != config.getQueueCountPerTopic()) {
+                LOG.warn("create topic failed, topic={}", topic);
+                return false;
+            }
             zkData.getTopicLock().lock();
             try {
-                while (zkData.getTopicMap().get(topic) == null
-                        || zkData.getTopicMap().get(topic).size() != config.getQueueCountPerTopic()) {
-                    zkData.getTopicCondition().awaitUninterruptibly();
+                if (!zkData.getTopicMap().containsKey(topic)) {
+                    zkData.getTopicMap().put(topic, queueMap);
                 }
             } finally {
                 zkData.getTopicLock().unlock();
             }
         }
 
+        // 获取topic的queueId和对应的shardingId
+        Integer queueId;
+        Integer shardingId;
         zkData.getTopicLock().lock();
         try {
             Map<Integer, Integer> queueMap = zkData.getTopicMap().get(topic);

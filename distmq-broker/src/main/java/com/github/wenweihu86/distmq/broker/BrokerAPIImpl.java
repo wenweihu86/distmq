@@ -37,34 +37,54 @@ public class BrokerAPIImpl implements BrokerAPI {
         BrokerMessage.BaseResponse.Builder baseResBuilder = BrokerMessage.BaseResponse.newBuilder();
         baseResBuilder.setResCode(BrokerMessage.ResCode.RES_CODE_FAIL);
 
-        // 验证queue存在，并且属于该sharding
+        // 查询topic是否存在
         ZKData zkData = ZKData.getInstance();
         GlobalConf conf = GlobalConf.getInstance();
-        Map<String, Map<Integer, Integer>> topicMap = zkData.getTopicMap();
-        Map<Integer, Integer> queueMap = topicMap.get(request.getTopic());
-        // topic由producer提前创建完成，所以这里会校验不存在的话，直接返回失败
-        if (queueMap == null
-                || !queueMap.containsKey(request.getQueue())
-                || queueMap.get(request.getQueue()) != conf.getShardingId()) {
-            queueMap = zkClient.readTopicInfo(request.getTopic());
+        boolean topicExist = false;
+        boolean shardingValid = false;
+        zkData.getTopicLock().lock();
+        try {
+            Map<Integer, Integer> queueMap = zkData.getTopicMap().get(request.getTopic());
+            if (queueMap != null && queueMap.size() > 0) {
+                topicExist = true;
+                if (queueMap.get(request.getQueue()) == conf.getShardingId()) {
+                    shardingValid = true;
+                }
+            }
+        } finally {
+            zkData.getTopicLock().unlock();
+        }
+
+        // 如果topic尚不存在，请求zookeeper读取
+        if (!topicExist) {
+            Map<Integer, Integer> queueMap = zkClient.readTopicInfo(request.getTopic());
             zkData.getTopicLock().lock();
             try {
-                zkData.getTopicMap().put(request.getTopic(), queueMap);
+                if (!zkData.getTopicMap().containsKey(request.getTopic())) {
+                    zkData.getTopicMap().put(request.getTopic(), queueMap);
+                }
+                queueMap = zkData.getTopicMap().get(request.getTopic());
+                if (queueMap.size() > 0) {
+                    topicExist = true;
+                }
+                if (queueMap.get(request.getQueue()) == conf.getShardingId()) {
+                    shardingValid = true;
+                }
             } finally {
                 zkData.getTopicLock().unlock();
             }
-            if (queueMap == null
-                    || !queueMap.containsKey(request.getQueue())
-                    || queueMap.get(request.getQueue()) != conf.getShardingId()) {
-                String message = "queue not exist or not be included by this sharding";
-                baseResBuilder.setResMsg(message);
-                responseBuilder.setBaseRes(baseResBuilder.build());
-                LOG.info("sendMessage request, topic={}, queue={}, resCode={}, resMsg={}",
-                        request.getTopic(), request.getQueue(),
-                        responseBuilder.getBaseRes().getResCode(),
-                        responseBuilder.getBaseRes().getResMsg());
-                return responseBuilder.build();
-            }
+        }
+
+        // 验证queue存在，并且属于该sharding
+        if (!topicExist || !shardingValid) {
+            String message = "queue not exist or not be included by this sharding";
+            baseResBuilder.setResMsg(message);
+            responseBuilder.setBaseRes(baseResBuilder.build());
+            LOG.info("sendMessage request, topic={}, queue={}, resCode={}, resMsg={}",
+                    request.getTopic(), request.getQueue(),
+                    responseBuilder.getBaseRes().getResCode(),
+                    responseBuilder.getBaseRes().getResMsg());
+            return responseBuilder.build();
         }
 
         // 如果自己不是leader，将写请求转发给leader

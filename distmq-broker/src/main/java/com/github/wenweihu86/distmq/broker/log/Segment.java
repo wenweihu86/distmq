@@ -123,7 +123,7 @@ public class Segment {
             headerBuffer.flip();
             long crc32 = headerBuffer.getLong();
             int messageLen = headerBuffer.getInt();
-            LOG.info("messageLen={}", messageLen);
+            LOG.debug("messageLen={}", messageLen);
             ByteBuffer messageContentBuffer = ByteBuffer.allocate(messageLen);
             readLen = channel.read(messageContentBuffer);
             if (readLen != messageLen) {
