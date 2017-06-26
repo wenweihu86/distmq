@@ -3,9 +3,11 @@ package com.github.wenweihu86.distmq.broker.log;
 import com.github.wenweihu86.distmq.broker.BrokerUtils;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -27,7 +29,6 @@ public class Segment {
     private long fileSize;
     private RandomAccessFile randomAccessFile;
     private FileChannel channel;
-    private long lastModifiedTime; // 文件最后修改时间
 
     public Segment(String dirName, String fileName) {
         this.dirName = dirName;
@@ -70,6 +71,13 @@ public class Segment {
         } catch (IOException ex) {
             LOG.warn("close file exception:", ex);
         }
+    }
+
+    public void delete() {
+        close();
+        String fullFileName = dirName + File.separator + fileName;
+        File file = new File(fullFileName);
+        file.delete();
     }
 
     public boolean append(BrokerMessage.MessageContent.Builder messageBuilder) {
@@ -210,11 +218,4 @@ public class Segment {
         this.channel = channel;
     }
 
-    public long getLastModifiedTime() {
-        return lastModifiedTime;
-    }
-
-    public void setLastModifiedTime(long lastModifiedTime) {
-        this.lastModifiedTime = lastModifiedTime;
-    }
 }

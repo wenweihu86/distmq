@@ -132,4 +132,16 @@ public class SegmentedLog {
         return lastSegment.getEndOffset();
     }
 
+    public String getSegmentDir() {
+        return segmentDir;
+    }
+
+    public TreeMap<Long, Segment> getStartOffsetSegmentMap() {
+        return startOffsetSegmentMap;
+    }
+
+    public Lock getLock() {
+        return lock;
+    }
+
 }

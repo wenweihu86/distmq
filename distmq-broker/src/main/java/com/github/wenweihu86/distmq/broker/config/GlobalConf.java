@@ -24,6 +24,8 @@ public class GlobalConf {
     private String dataDir; // 数据目录
     private int defaultQueueNumPerTopic; // 每个topic的默认queue个数
     private int maxSegmentSize; // 单个segment文件最大大小
+    private int expiredLogCheckInterval; // log检查时间间隔
+    private int expiredLogDuration; // log过期时长
     // 该server属于哪个分片集群，每个分片是leader/followers的raft集群
     private int shardingId;
     private ZKConf zkConf;
@@ -38,6 +40,8 @@ public class GlobalConf {
         defaultQueueNumPerTopic = toml.getLong("default_queue_num_per_topic").intValue();
         maxSegmentSize = toml.getLong("max_segment_size").intValue();
         shardingId = toml.getLong("sharding_id").intValue();
+        expiredLogCheckInterval = toml.getLong("expired_log_check_interval").intValue();
+        expiredLogDuration = toml.getLong("expired_log_duration").intValue();
         zkConf = readZKConf();
     }
 
@@ -113,6 +117,22 @@ public class GlobalConf {
 
     public int getShardingId() {
         return shardingId;
+    }
+
+    public int getExpiredLogCheckInterval() {
+        return expiredLogCheckInterval;
+    }
+
+    public int getExpiredLogDuration() {
+        return expiredLogDuration;
+    }
+
+    public void setMaxSegmentSize(int maxSegmentSize) {
+        this.maxSegmentSize = maxSegmentSize;
+    }
+
+    public void setExpiredLogDuration(int expiredLogDuration) {
+        this.expiredLogDuration = expiredLogDuration;
     }
 
     public ZKConf getZkConf() {
