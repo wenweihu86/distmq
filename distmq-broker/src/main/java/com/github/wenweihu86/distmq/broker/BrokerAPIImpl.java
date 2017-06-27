@@ -3,8 +3,8 @@ package com.github.wenweihu86.distmq.broker;
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.client.api.BrokerAPI;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
-import com.github.wenweihu86.distmq.client.zk.ZKClient;
-import com.github.wenweihu86.distmq.client.zk.ZKData;
+import com.github.wenweihu86.distmq.client.zk.MetadataManager;
+import com.github.wenweihu86.distmq.client.zk.Metadata;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.proto.RaftMessage;
 import com.github.wenweihu86.rpc.client.RPCClient;
@@ -23,12 +23,12 @@ public class BrokerAPIImpl implements BrokerAPI {
 
     private RaftNode raftNode;
     private BrokerStateMachine stateMachine;
-    private ZKClient zkClient;
+    private MetadataManager metadataManager;
 
-    public BrokerAPIImpl(RaftNode raftNode, BrokerStateMachine stateMachine, ZKClient zkClient) {
+    public BrokerAPIImpl(RaftNode raftNode, BrokerStateMachine stateMachine, MetadataManager metadataManager) {
         this.raftNode = raftNode;
         this.stateMachine = stateMachine;
-        this.zkClient = zkClient;
+        this.metadataManager = metadataManager;
     }
 
     @Override
@@ -38,44 +38,24 @@ public class BrokerAPIImpl implements BrokerAPI {
         baseResBuilder.setResCode(BrokerMessage.ResCode.RES_CODE_FAIL);
 
         // 查询topic是否存在
-        ZKData zkData = ZKData.getInstance();
-        GlobalConf conf = GlobalConf.getInstance();
-        boolean topicExist = false;
-        boolean shardingValid = false;
-        zkData.getTopicLock().lock();
-        try {
-            Map<Integer, Integer> queueMap = zkData.getTopicMap().get(request.getTopic());
-            if (queueMap != null && queueMap.size() > 0) {
-                topicExist = true;
-                if (queueMap.get(request.getQueue()) == conf.getShardingId()) {
-                    shardingValid = true;
-                }
-            }
-        } finally {
-            zkData.getTopicLock().unlock();
-        }
-
+        boolean topicExist = metadataManager.checkTopicExist(request.getTopic());
         // 如果topic尚不存在，请求zookeeper读取
         if (!topicExist) {
-            Map<Integer, Integer> queueMap = zkClient.readTopicInfo(request.getTopic());
-            zkData.getTopicLock().lock();
-            try {
-                if (!zkData.getTopicMap().containsKey(request.getTopic())) {
-                    zkData.getTopicMap().put(request.getTopic(), queueMap);
-                }
-                queueMap = zkData.getTopicMap().get(request.getTopic());
-                if (queueMap.size() > 0) {
-                    topicExist = true;
-                }
-                if (queueMap.get(request.getQueue()) == conf.getShardingId()) {
-                    shardingValid = true;
-                }
-            } finally {
-                zkData.getTopicLock().unlock();
+            Map<Integer, Integer> queueMap = metadataManager.readTopicInfo(request.getTopic());
+            if (queueMap.size() > 0) {
+                topicExist = true;
             }
+            metadataManager.updateTopicMap(request.getTopic(), queueMap);
         }
 
         // 验证queue存在，并且属于该sharding
+        boolean shardingValid = false;
+        GlobalConf conf = GlobalConf.getInstance();
+        Integer shardingId = metadataManager.getQueueSharding(request.getTopic(), request.getQueue());
+        if (shardingId != null && shardingId.equals(conf.getShardingId())) {
+            shardingValid = true;
+        }
+
         if (!topicExist || !shardingValid) {
             String message = "queue not exist or not be included by this sharding";
             baseResBuilder.setResMsg(message);

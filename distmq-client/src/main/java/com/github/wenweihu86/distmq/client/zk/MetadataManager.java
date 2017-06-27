@@ -4,6 +4,7 @@ import com.github.wenweihu86.distmq.client.BrokerClient;
 import com.github.wenweihu86.distmq.client.BrokerClientManager;
 import com.github.wenweihu86.distmq.client.consumer.ConsumerConfig;
 import com.github.wenweihu86.distmq.client.producer.ProducerConfig;
+import com.github.wenweihu86.distmq.client.utils.JsonUtil;
 import com.github.wenweihu86.rpc.client.RPCClientOptions;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.curator.RetryPolicy;
@@ -25,20 +26,23 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * Created by wenweihu86 on 2017/6/21.
  */
-public class ZKClient {
-    private static final Logger LOG = LoggerFactory.getLogger(ZKClient.class);
+public class MetadataManager {
+    private static final Logger LOG = LoggerFactory.getLogger(MetadataManager.class);
     private ZKConf zkConf;
     private CuratorFramework zkClient;
+    private Metadata metadata;
     private boolean isProducer = false;
     private boolean isConsumer = false;
 
-    public ZKClient(ZKConf conf) {
+    public MetadataManager(ZKConf conf) {
         this.zkConf = conf;
         if (conf instanceof ProducerConfig) {
             isProducer = true;
         } else if (conf instanceof ConsumerConfig) {
             isConsumer = true;
         }
+        this.metadata = new Metadata();
+
         RetryPolicy retryPolicy = new ExponentialBackoffRetry(
                 zkConf.getRetryIntervalMs(), zkConf.getRetryCount());
         this.zkClient = CuratorFrameworkFactory.builder()
@@ -51,47 +55,48 @@ public class ZKClient {
 
         // create path
         String brokersPath = zkConf.getBasePath() + "/brokers";
-        createPath(brokersPath);
+        createPath(brokersPath, CreateMode.PERSISTENT);
         String topicsPath = zkConf.getBasePath() + "/topics";
-        createPath(topicsPath);
+        createPath(topicsPath, CreateMode.PERSISTENT);
         if (isConsumer) {
             ConsumerConfig consumerConfig = (ConsumerConfig) conf;
             String consumerIdsPath = zkConf.getBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/ids";
-            createPath(consumerIdsPath);
+            createPath(consumerIdsPath, CreateMode.PERSISTENT);
             String offsetsPath = zkConf.getBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/offsets";
-            createPath(offsetsPath);
+            createPath(offsetsPath, CreateMode.PERSISTENT);
         }
     }
 
-    private void createPath(String path) {
+    private boolean createPath(String path, CreateMode createMode) {
+        boolean success;
         try {
             zkClient.create()
                     .creatingParentsIfNeeded()
-                    .withMode(CreateMode.PERSISTENT)
+                    .withMode(createMode)
                     .forPath(path, "".getBytes());
+            success = true;
             LOG.info("create path success, path={}", path);
-        } catch (Exception ex) {
-            LOG.debug("createPath exception:", ex);
+        } catch (KeeperException.NodeExistsException ex1) {
+            success = true;
+            LOG.debug("node exist, path={}", path);
+        } catch (Exception ex2) {
+            success = false;
+            LOG.debug("createPath exception:", ex2);
         }
+        return success;
     }
 
     public void registerBroker(int shardingId, String ip, int port) {
         String path = zkConf.getBasePath() + "/brokers/" + shardingId + "/" + ip + ":" + port;
-        try {
-            zkClient.create()
-                    .creatingParentsIfNeeded()
-                    .withMode(CreateMode.EPHEMERAL)
-                    .forPath(path, "".getBytes());
-        } catch (Exception ex) {
-            LOG.warn("registerBroker exception:", ex);
+        boolean success = createPath(path, CreateMode.EPHEMERAL);
+        if (success) {
+            LOG.info("register broker sucess, ip={}, port={}", ip, port);
+        } else {
+            LOG.warn("register broker failed, ip={}, port={}", ip, port);
         }
-        LOG.info("register broker sucess, ip={}, port={}", ip, port);
     }
 
-    // 启动时调用，所以不用加锁
     public void subscribeBroker() {
-        final ZKData zkData = ZKData.getInstance();
-        final Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
         try {
             final String brokerParentPath = zkConf.getBasePath() + "/brokers";
             List<String> shardings = zkClient.getChildren().forPath(brokerParentPath);
@@ -106,11 +111,16 @@ public class ZKClient {
                         BrokerClientManager.getInstance().getBrokerClientMap().put(address, brokerClient);
                     }
                 }
-                brokerMap.put(shardingId, brokerAddressList);
+
+                metadata.getBrokerLock().lock();
+                try {
+                    metadata.getBrokerMap().put(shardingId, brokerAddressList);
+                } finally {
+                    metadata.getBrokerLock().unlock();
+                }
+
                 // 监听broker分片变化
-                zkClient.getChildren().usingWatcher(
-                        new BrokerShardingWather(shardingId))
-                        .forPath(shardingPath);
+                zkClient.getChildren().usingWatcher(new BrokerShardingWather(shardingId)).forPath(shardingPath);
             }
             // 监听/brokers孩子节点变化
             zkClient.getChildren().usingWatcher(new BrokersWatcher()).forPath(brokerParentPath);
@@ -125,16 +135,7 @@ public class ZKClient {
      * @param queueNum queue个数
      */
     public synchronized void registerTopic(String topic, int queueNum) {
-        ZKData zkData = ZKData.getInstance();
-        List<Integer> shardingIds;
-        zkData.getBrokerLock().lock();
-        try {
-            Map<Integer, List<String>> brokerMap = zkData.getBrokerMap();
-            shardingIds = new ArrayList<>(brokerMap.keySet());
-        } finally {
-            zkData.getBrokerLock().unlock();
-        }
-
+        List<Integer> shardingIds = metadata.getBrokerShardingIds();
         int shardingNum = shardingIds.size();
         String topicPath = zkConf.getBasePath() + "/topics/" + topic;
         for (int queueId = 0; queueId < queueNum; queueId++) {
@@ -154,7 +155,6 @@ public class ZKClient {
 
     public Map<Integer, Integer> readTopic(String topic) {
         Map<Integer, Integer> queueMap = new HashMap<>();
-        ZKData zkData = ZKData.getInstance();
         String path = zkConf.getBasePath() + "/topics/" + topic;
         try {
             List<String> queues = zkClient.getChildren().forPath(path);
@@ -173,50 +173,54 @@ public class ZKClient {
         return queueMap;
     }
 
-    // 启动时调用，所以不用加锁
     public void subscribeTopic() {
-        ZKData zkData = ZKData.getInstance();
         String topicParentPath = zkConf.getBasePath() + "/topics";
         try {
             List<String> topics = zkClient.getChildren().forPath(topicParentPath);
             for (String topic : topics) {
                 Map<Integer, Integer> queueMap = readTopicInfo(topic);
-                zkData.getTopicMap().put(topic, queueMap);
+                metadata.updateTopicMap(topic, queueMap);
                 // 监听topic下的queue变化事件
                 // 这里假定queue与shardingId映射关系不会发生变化，所以没有监听queue节点变化事情
                 String topicPath = topicParentPath + "/" + topic;
-                zkClient.getChildren().usingWatcher(
-                        new TopicWatcher(topic))
-                        .forPath(topicPath);
+                zkClient.getChildren().usingWatcher(new TopicWatcher(topic)).forPath(topicPath);
             }
             // 监听/topics孩子节点变化情况
-            zkClient.getChildren().usingWatcher(
-                    new TopicsWather())
-                    .forPath(topicParentPath);
+            zkClient.getChildren().usingWatcher(new TopicsWather()).forPath(topicParentPath);
         } catch (Exception ex) {
             LOG.warn("subscribeTopic exception:", ex);
         }
     }
 
-    public void registerConsumer(String consumerGroup, String consumerId) {
+    public boolean registerConsumer(String consumerGroup, String consumerId) {
         String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids/" + consumerId;
-        try {
-            zkClient.create()
-                    .creatingParentsIfNeeded()
-                    .withMode(CreateMode.EPHEMERAL)
-                    .forPath(path, "".getBytes());
-        } catch (Exception ex) {
-            LOG.warn("registerConsumer exception:", ex);
+        boolean success = createPath(path, CreateMode.EPHEMERAL);
+        if (success) {
+            LOG.info("registerConsumer sucess, consumerGroup={}, consumerId={}", consumerGroup, consumerId);
+        } else {
+            LOG.warn("registerConsumer failed, consumerGroup={}, consumerId={}", consumerGroup, consumerId);
         }
-        LOG.info("registerConsumer sucess, consumerGroup={}, consumerId={}", consumerGroup, consumerId);
+        return success;
     }
 
-    public void subscribeConsumer(String consumerGroup) {
-        ZKData zkData = ZKData.getInstance();
+    public void updateConsumerIds(String consumerGroup) {
         String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
         try {
             List<String> consumerIds = zkClient.getChildren().forPath(path);
-            zkData.setConsumerIds(consumerIds);
+            metadata.getConsumerIdsLock().lock();
+            try {
+                metadata.setConsumerIds(consumerIds);
+            } finally {
+                metadata.getConsumerIdsLock().unlock();
+            }
+        } catch (Exception ex) {
+            LOG.warn("updateConsumerIds exception:", ex);
+        }
+    }
+
+    public void subscribeConsumer(String consumerGroup) {
+        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
+        try {
             zkClient.getChildren()
                     .usingWatcher(new ConsumerWatcher(consumerGroup))
                     .forPath(path);
@@ -235,6 +239,7 @@ public class ZKClient {
         Map<Integer, Long> queueOffsetMap = new HashMap<>();
         String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
         try {
+            // 从zk读取
             List<String> queues = zkClient.getChildren().forPath(path);
             for (String queue : queues) {
                 String queuePath = path + "/" + queue;
@@ -244,7 +249,16 @@ public class ZKClient {
                     queueOffsetMap.put(Integer.valueOf(queue), offset);
                 }
             }
-            LOG.info("readConsumerOffset success, consumerGroup={}, topic={}", consumerGroup, topic);
+
+            // 更新本地内存
+            metadata.getConsumerOffsetLock().lock();
+            try {
+                metadata.getConsumerOffsetMap().putAll(queueOffsetMap);
+                LOG.info("read consumer offset success, result={}",
+                        JsonUtil.toJson(metadata.getConsumerOffsetMap()));
+            } finally {
+                metadata.getConsumerOffsetLock().unlock();
+            }
         } catch (Exception ex) {
             LOG.debug("readConsumerOffset exception:", ex);
         }
@@ -257,13 +271,24 @@ public class ZKClient {
         int currentTryCount = 0;
         while (currentTryCount++ < maxTryCount) {
             try {
+                // 更新zk
                 byte[] dataBytes = String.valueOf(offset).getBytes();
                 zkClient.setData().forPath(path, dataBytes);
                 LOG.info("updateConsumerOffset success, consumerGroup={}, topic={}, queue={}, offset={}",
                         consumerGroup, topic, queueId, offset);
+
+                // 更新本地内存
+                metadata.getConsumerOffsetLock().lock();
+                try {
+                    metadata.getConsumerOffsetMap().put(queueId, offset);
+                    LOG.info("new consumer offset map={}",
+                            JsonUtil.toJson(metadata.getConsumerOffsetMap()));
+                } finally {
+                    metadata.getConsumerOffsetLock().unlock();
+                }
                 break;
             } catch (KeeperException.NoNodeException ex1) {
-                createPath(path);
+                createPath(path, CreateMode.PERSISTENT);
                 continue;
             } catch (Exception ex2) {
                 LOG.warn("updateConsumerOffset exception:", ex2);
@@ -290,6 +315,35 @@ public class ZKClient {
         return queueMap;
     }
 
+    public long getConsumerOffset(Integer queueId) {
+        return metadata.getConsumerOffset(queueId);
+    }
+
+    public List<String> getBrokerAddressList(Integer shardingId) {
+        return metadata.getBrokerAddressList(shardingId);
+    }
+
+    public boolean checkTopicExist(String topic) {
+        return metadata.checkTopicExist(topic);
+    }
+
+    public void updateTopicMap(String topic, Map<Integer, Integer> queueMap) {
+        metadata.updateTopicMap(topic, queueMap);
+    }
+
+    public Map<Integer, Integer> getTopicQueueMap(String topic) {
+        return metadata.getTopicQueueMap(topic);
+    }
+
+    public Integer getQueueSharding(String topic, Integer queueId) {
+        return metadata.getQueueSharding(topic, queueId);
+    }
+
+    public List<String> getConsumerIds() {
+        return metadata.getConsumerIds();
+    }
+
+    // 监听consumerGroup下的consumer节点数变化
     private class ConsumerWatcher implements CuratorWatcher {
         private String consumerGroup;
 
@@ -302,13 +356,7 @@ public class ZKClient {
             String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
             LOG.info("get zookeeper notification for path={}", path);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
-                try {
-                    List<String> consumerIds = zkClient.getChildren().forPath(path);
-                    ZKData zkData = ZKData.getInstance();
-                    zkData.setConsumerIds(consumerIds);
-                } catch (Exception ex) {
-                    LOG.warn("subscribeConsumer exception:", ex);
-                }
+                updateConsumerIds(consumerGroup);
             }
             zkClient.getChildren()
                     .usingWatcher(new ConsumerWatcher(consumerGroup))
@@ -320,22 +368,11 @@ public class ZKClient {
     private class BrokersWatcher implements CuratorWatcher {
         @Override
         public void process(WatchedEvent event) throws Exception {
-            ZKData zkData = ZKData.getInstance();
             String brokerPath = zkConf.getBasePath() + "/brokers";
             LOG.info("get zookeeper notification for path={}", brokerPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
-
-                List<String> oldShardings = new ArrayList<>();
-                zkData.getBrokerLock().lock();
-                try {
-                    for (Integer shardingId : zkData.getBrokerMap().keySet()) {
-                        oldShardings.add(String.valueOf(shardingId));
-                    }
-                } finally {
-                    zkData.getBrokerLock().unlock();
-                }
-
+                List<String> oldShardings = metadata.getBrokerShardings();
                 Collection<String> addedShardings = CollectionUtils.subtract(newShardings, oldShardings);
                 Collection<String> deletedShardings = CollectionUtils.subtract(oldShardings, newShardings);
                 for (String sharding : addedShardings) {
@@ -344,31 +381,17 @@ public class ZKClient {
                     List<String> brokerAddressList = zkClient.getChildren().forPath(shardingPath);
                     for (String address : brokerAddressList) {
                         if (isProducer || isConsumer) {
-                            BrokerClient brokerClient = new BrokerClient(address, BrokerClientManager.getRpcClientOptions());
+                            BrokerClient brokerClient = new BrokerClient(
+                                    address, BrokerClientManager.getRpcClientOptions());
                             BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
                         }
                     }
-
-                    zkData.getBrokerLock().lock();
-                    try {
-                        zkData.getBrokerMap().put(shardingId, brokerAddressList);
-                    } finally {
-                        zkData.getBrokerLock().unlock();
-                    }
-
-                    zkClient.getChildren().usingWatcher(
-                            new BrokerShardingWather(shardingId))
-                            .forPath(shardingPath);
+                    metadata.updateBrokerSharding(shardingId, brokerAddressList);
+                    zkClient.getChildren().usingWatcher(new BrokerShardingWather(shardingId)).forPath(shardingPath);
                 }
 
                 for (String sharding : deletedShardings) {
-                    List<String> brokerList;
-                    zkData.getBrokerLock().lock();
-                    try {
-                        brokerList = zkData.getBrokerMap().remove(Integer.valueOf(sharding));
-                    } finally {
-                        zkData.getBrokerLock().unlock();
-                    }
+                    List<String> brokerList = metadata.removeBrokerSharding(Integer.valueOf(sharding));
                     if ((isProducer || isConsumer) && CollectionUtils.isNotEmpty(brokerList)) {
                         ConcurrentMap<String, BrokerClient> brokerClientMap
                                 = BrokerClientManager.getInstance().getBrokerClientMap();
@@ -396,47 +419,25 @@ public class ZKClient {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
-            ZKData zkData = ZKData.getInstance();
             String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
             LOG.info("get zookeeper notification for path={}", shardingPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newBrokerAddressList = zkClient.getChildren().forPath(shardingPath);
-                List<String> oldBrokerAddressList;
-                zkData.getBrokerLock().lock();
-                try {
-                    oldBrokerAddressList = zkData.getBrokerMap().get(shardingPath);
-                    if (oldBrokerAddressList == null) {
-                        oldBrokerAddressList = new ArrayList<>();
-                    }
-                } finally {
-                    zkData.getBrokerLock().unlock();
-                }
-
+                List<String> oldBrokerAddressList = metadata.getBrokerAddressList(shardingId);
                 Collection<String> addedBrokerAddressList
                         = CollectionUtils.subtract(newBrokerAddressList, oldBrokerAddressList);
                 Collection<String> deletedBrokerAddressList
                         = CollectionUtils.subtract(oldBrokerAddressList, newBrokerAddressList);
                 for (String address : addedBrokerAddressList) {
-                    zkData.getBrokerLock().lock();
-                    try {
-                        zkData.getBrokerMap().get(shardingId).add(address);
-                    } finally {
-                        zkData.getBrokerLock().unlock();
-                    }
-
+                    metadata.addShardingBrokerAddress(shardingId, address);
                     if (isProducer || isConsumer) {
-                        BrokerClient brokerClient = new BrokerClient(address, BrokerClientManager.getRpcClientOptions());
+                        BrokerClient brokerClient = new BrokerClient(
+                                address, BrokerClientManager.getRpcClientOptions());
                         BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
                     }
                 }
                 for (String address : deletedBrokerAddressList) {
-                    zkData.getBrokerLock().lock();
-                    try {
-                        zkData.getBrokerMap().get(shardingId).remove(address);
-                    } finally {
-                        zkData.getBrokerLock().unlock();
-                    }
-
+                    metadata.removeShardingBrokerAddress(shardingId, address);
                     if (isProducer || isConsumer) {
                         BrokerClient brokerClient
                                 = BrokerClientManager.getInstance().getBrokerClientMap().remove(address);
@@ -454,18 +455,11 @@ public class ZKClient {
     private class TopicsWather implements CuratorWatcher {
         @Override
         public void process(WatchedEvent event) throws Exception {
-            ZKData zkData = ZKData.getInstance();
             String topicParentPath = zkConf.getBasePath() + "/topics";
             LOG.info("get zookeeper notification for path={}", topicParentPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newTopics = zkClient.getChildren().forPath(topicParentPath);
-                List<String> oldTopics;
-                zkData.getTopicLock().lockInterruptibly();
-                try {
-                    oldTopics = new ArrayList<>(zkData.getTopicMap().keySet());
-                } finally {
-                    zkData.getTopicLock().unlock();
-                }
+                List<String> oldTopics = metadata.getAllTopics();
                 Collection<String> addedTopics = CollectionUtils.subtract(newTopics, oldTopics);
                 Collection<String> deletedTopics = CollectionUtils.subtract(oldTopics, newTopics);
                 for (String topic : addedTopics) {
@@ -474,24 +468,9 @@ public class ZKClient {
                             .usingWatcher(new TopicWatcher(topic))
                             .forPath(topicPath);
                     Map<Integer, Integer> queueMap = readTopicInfo(topic);
-
-                    zkData.getTopicLock().lock();
-                    try {
-                        zkData.getTopicMap().put(topic, queueMap);
-                        zkData.getTopicCondition().signalAll();
-                    } finally {
-                        zkData.getTopicLock().unlock();
-                    }
+                    metadata.updateTopicMap(topic, queueMap);
                 }
-
-                zkData.getTopicLock().lock();
-                try {
-                    for (String topic : deletedTopics) {
-                        zkData.getTopicMap().remove(topic);
-                    }
-                } finally {
-                    zkData.getTopicLock().unlock();
-                }
+                metadata.removeTopics(deletedTopics);
             }
             zkClient.getChildren()
                     .usingWatcher(new TopicsWather())
@@ -509,7 +488,6 @@ public class ZKClient {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
-            ZKData zkData = ZKData.getInstance();
             String topicPath = zkConf.getBasePath() + "/topics/" + topic;
             LOG.info("get zookeeper notification for path={}", topicPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
@@ -518,39 +496,16 @@ public class ZKClient {
                 for (String queue : newQueues) {
                     newQueueIds.add(Integer.valueOf(queue));
                 }
-
-                List<Integer> oldQueueIds;
-                zkData.getTopicLock().lockInterruptibly();
-                try {
-                    oldQueueIds = new ArrayList<>(zkData.getTopicMap().get(topic).keySet());
-                } finally {
-                    zkData.getTopicLock().unlock();
-                }
-
+                List<Integer> oldQueueIds = metadata.getTopicQueues(topic);
                 Collection<Integer> addedQueueIds = CollectionUtils.subtract(newQueueIds, oldQueueIds);
                 Collection<Integer> deletedQueueIds = CollectionUtils.subtract(oldQueueIds, newQueueIds);
                 for (Integer queueId : addedQueueIds) {
                     String queuePath = topicPath + "/" + queueId;
                     String queueData = new String(zkClient.getData().forPath(queuePath));
                     Integer shardingId = Integer.valueOf(queueData);
-
-                    zkData.getTopicLock().lock();
-                    try {
-                        zkData.getTopicMap().get(topic).put(queueId, shardingId);
-                        zkData.getTopicCondition().signalAll();
-                    } finally {
-                        zkData.getTopicLock().unlock();
-                    }
+                    metadata.addTopicQueue(topic, queueId, shardingId);
                 }
-
-                zkData.getTopicLock().lock();
-                try {
-                    for (Integer queueId : deletedQueueIds) {
-                        zkData.getTopicMap().get(topic).remove(queueId);
-                    }
-                } finally {
-                    zkData.getTopicLock().unlock();
-                }
+                metadata.deleteTopicQueue(topic, deletedQueueIds);
             }
             zkClient.getChildren()
                     .usingWatcher(new TopicWatcher(topic))

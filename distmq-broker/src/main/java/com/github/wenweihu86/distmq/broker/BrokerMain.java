@@ -1,7 +1,7 @@
 package com.github.wenweihu86.distmq.broker;
 
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
-import com.github.wenweihu86.distmq.client.zk.ZKClient;
+import com.github.wenweihu86.distmq.client.zk.MetadataManager;
 import com.github.wenweihu86.distmq.client.zk.ZKConf;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.RaftOptions;
@@ -28,7 +28,7 @@ public class BrokerMain {
 
         // 初始化zookeeper
         ZKConf zkConf = conf.getZkConf();
-        ZKClient zkClient = new ZKClient(zkConf);
+        MetadataManager metadataManager = new MetadataManager(zkConf);
 
         // 初始化RPCServer
         RPCServer server = new RPCServer(localServer.getEndPoint().getPort());
@@ -45,15 +45,15 @@ public class BrokerMain {
         RaftClientService raftClientService = new RaftClientServiceImpl(raftNode);
         server.registerService(raftClientService);
         // 注册应用自己提供的服务
-        BrokerAPIImpl brokerAPI = new BrokerAPIImpl(raftNode, stateMachine, zkClient);
+        BrokerAPIImpl brokerAPI = new BrokerAPIImpl(raftNode, stateMachine, metadataManager);
         server.registerService(brokerAPI);
         // 启动RPCServer，初始化Raft节点
         server.start();
         raftNode.init();
 
         // 订阅broker和topic的变化
-        zkClient.subscribeBroker();
-        zkClient.subscribeTopic();
+        metadataManager.subscribeBroker();
+        metadataManager.subscribeTopic();
         // 等成为raft集群成员后，才能注册到zk
         while (!ConfigurationUtils.containsServer(
                 raftNode.getConfiguration(), conf.getLocalServer().getServerId())) {
@@ -63,7 +63,7 @@ public class BrokerMain {
                 ex.printStackTrace();
             }
         }
-        zkClient.registerBroker(conf.getShardingId(),
+        metadataManager.registerBroker(conf.getShardingId(),
                 conf.getLocalServer().getEndPoint().getHost(),
                 conf.getLocalServer().getEndPoint().getPort());
     }

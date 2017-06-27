@@ -2,19 +2,15 @@ package com.github.wenweihu86.distmq.broker;
 
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.broker.log.LogManager;
-import com.github.wenweihu86.distmq.broker.log.Segment;
 import com.github.wenweihu86.distmq.broker.log.SegmentedLog;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
-import com.github.wenweihu86.distmq.client.zk.ZKData;
 import com.github.wenweihu86.raft.StateMachine;
-import com.google.protobuf.ByteString;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * Created by wenweihu86 on 2017/6/17.
