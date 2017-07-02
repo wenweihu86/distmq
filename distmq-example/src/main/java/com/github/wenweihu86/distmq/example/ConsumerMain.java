@@ -13,7 +13,7 @@ import java.util.List;
 public class ConsumerMain {
     public static void main(String[] args) {
         final ConsumerConfig config = new ConsumerConfig();
-        config.setServers("127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183");
+        config.setZKServers("127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183");
         config.setConsumerGroup("example-consumer-group");
         config.setTopic("example-topic");
         Consumer consumer = new Consumer(config, new MessageListener() {

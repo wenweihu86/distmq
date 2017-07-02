@@ -4,58 +4,59 @@ package com.github.wenweihu86.distmq.client.zk;
  * Created by wenweihu86 on 2017/6/21.
  */
 public class ZKConf {
-    private String servers;
-    private int connectTimeoutMs = 500;
-    private int sessionTimeoutMs = 5000;
-    private int retryCount = 3;
-    private int retryIntervalMs = 1000;
-    private String basePath = "/distmq";
+    private String zkServers;
+    private int zkConnectTimeoutMs = 500;
+    private int zkSessionTimeoutMs = 5000;
+    private int zkRetryCount = 3;
+    private int zkRetryIntervalMs = 1000;
+    private String zkBasePath = "/distmq";
 
-    public String getServers() {
-        return servers;
+    public String getZKServers() {
+        return zkServers;
     }
 
-    public void setServers(String servers) {
-        this.servers = servers;
+    public void setZKServers(String zkServers) {
+        this.zkServers = zkServers;
     }
 
-    public int getConnectTimeoutMs() {
-        return connectTimeoutMs;
+    public int getZKConnectTimeoutMs() {
+        return zkConnectTimeoutMs;
     }
 
-    public void setConnectTimeoutMs(int connectTimeoutMs) {
-        this.connectTimeoutMs = connectTimeoutMs;
+    public void setZKConnectTimeoutMs(int zkConnectTimeoutMs) {
+        this.zkConnectTimeoutMs = zkConnectTimeoutMs;
     }
 
-    public int getSessionTimeoutMs() {
-        return sessionTimeoutMs;
+    public int getZKSessionTimeoutMs() {
+        return zkSessionTimeoutMs;
     }
 
-    public void setSessionTimeoutMs(int sessionTimeoutMs) {
-        this.sessionTimeoutMs = sessionTimeoutMs;
+    public void setZKSessionTimeoutMs(int zkSessionTimeoutMs) {
+        this.zkSessionTimeoutMs = zkSessionTimeoutMs;
     }
 
-    public int getRetryCount() {
-        return retryCount;
+    public int getZKRetryCount() {
+        return zkRetryCount;
     }
 
-    public void setRetryCount(int retryCount) {
-        this.retryCount = retryCount;
+    public void setZKRetryCount(int zkRetryCount) {
+        this.zkRetryCount = zkRetryCount;
     }
 
-    public int getRetryIntervalMs() {
-        return retryIntervalMs;
+    public int getZKRetryIntervalMs() {
+        return zkRetryIntervalMs;
     }
 
-    public void setRetryIntervalMs(int retryIntervalMs) {
-        this.retryIntervalMs = retryIntervalMs;
+    public void setZKRetryIntervalMs(int zkRetryIntervalMs) {
+        this.zkRetryIntervalMs = zkRetryIntervalMs;
     }
 
-    public String getBasePath() {
-        return basePath;
+    public String getZKBasePath() {
+        return zkBasePath;
     }
 
-    public void setBasePath(String basePath) {
-        this.basePath = basePath;
+    public void setZKBasePath(String zkBasePath) {
+        this.zkBasePath = zkBasePath;
     }
+
 }

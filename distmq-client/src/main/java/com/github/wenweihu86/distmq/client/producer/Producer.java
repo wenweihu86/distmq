@@ -1,15 +1,12 @@
 package com.github.wenweihu86.distmq.client.producer;
 
 import com.github.wenweihu86.distmq.client.BrokerClient;
-import com.github.wenweihu86.distmq.client.BrokerClientManager;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.distmq.client.zk.MetadataManager;
-import com.github.wenweihu86.distmq.client.zk.Metadata;
 import com.google.protobuf.ByteString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -23,7 +20,6 @@ public class Producer {
 
     public Producer(ProducerConfig config) {
         this.config = config;
-        BrokerClientManager.setRpcClientOptions(this.config.getRPCClientOptions());
         metadataManager = new MetadataManager(config);
         metadataManager.subscribeBroker();
         metadataManager.subscribeTopic();
@@ -51,11 +47,7 @@ public class Producer {
         Integer shardingId = queueMap.get(queueId);
 
         // send message to broker
-        List<String> brokerAddressList = metadataManager.getBrokerAddressList(shardingId);
-        int randIndex = ThreadLocalRandom.current().nextInt(0, brokerAddressList.size());
-        String brokerAddress = brokerAddressList.get(randIndex);
-        BrokerClient brokerClient = BrokerClientManager.getInstance().getBrokerClientMap().get(brokerAddress);
-
+        BrokerClient brokerClient = metadataManager.getBrokerClient(shardingId);
         BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.newBuilder()
                 .setTopic(topic)
                 .setQueue(queueId)
@@ -63,8 +55,8 @@ public class Producer {
                 .build();
         BrokerMessage.SendMessageResponse response = brokerClient.getBrokerAPI().sendMessage(request);
         if (response == null || response.getBaseRes().getResCode() != BrokerMessage.ResCode.RES_CODE_SUCCESS) {
-            LOG.warn("send message failed, topic={}, queue={}, brokerAddress={}",
-                    topic, queueId, brokerAddress);
+            LOG.warn("send message failed, topic={}, queue={}, shardingId={}",
+                    topic, queueId, shardingId);
             return false;
         }
         return true;

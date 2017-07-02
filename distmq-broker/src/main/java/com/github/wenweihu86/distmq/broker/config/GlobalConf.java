@@ -86,12 +86,12 @@ public class GlobalConf {
     private ZKConf readZKConf() {
         Toml zookeeperToml = toml.getTable("zookeeper");
         zkConf = new ZKConf();
-        zkConf.setServers(zookeeperToml.getString("servers"));
-        zkConf.setConnectTimeoutMs(zookeeperToml.getLong("connect_timeout_ms").intValue());
-        zkConf.setSessionTimeoutMs(zookeeperToml.getLong("session_timeout_ms").intValue());
-        zkConf.setRetryCount(zookeeperToml.getLong("retry_count").intValue());
-        zkConf.setRetryIntervalMs(zookeeperToml.getLong("retry_interval_ms").intValue());
-        zkConf.setBasePath(zookeeperToml.getString("base_path"));
+        zkConf.setZKServers(zookeeperToml.getString("servers"));
+        zkConf.setZKConnectTimeoutMs(zookeeperToml.getLong("connect_timeout_ms").intValue());
+        zkConf.setZKSessionTimeoutMs(zookeeperToml.getLong("session_timeout_ms").intValue());
+        zkConf.setZKRetryCount(zookeeperToml.getLong("retry_count").intValue());
+        zkConf.setZKRetryIntervalMs(zookeeperToml.getLong("retry_interval_ms").intValue());
+        zkConf.setZKBasePath(zookeeperToml.getString("base_path"));
         return zkConf;
     }
 

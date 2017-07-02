@@ -1,11 +1,8 @@
 package com.github.wenweihu86.distmq.client.consumer;
 
 import com.github.wenweihu86.distmq.client.BrokerClient;
-import com.github.wenweihu86.distmq.client.BrokerClientManager;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
-import com.github.wenweihu86.distmq.client.utils.JsonUtil;
 import com.github.wenweihu86.distmq.client.zk.MetadataManager;
-import com.github.wenweihu86.distmq.client.zk.Metadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +22,6 @@ public class Consumer implements Runnable {
     public Consumer(ConsumerConfig config, MessageListener listener) {
         this.config = config;
         this.listener = listener;
-        BrokerClientManager.setRpcClientOptions(this.config.getRPCClientOptions());
         metadataManager = new MetadataManager(config);
         metadataManager.registerConsumer(config.getConsumerGroup(), config.getConsumerId());
         metadataManager.updateConsumerIds(config.getConsumerGroup());
@@ -47,12 +43,7 @@ public class Consumer implements Runnable {
             Integer queueId = entry.getKey();
             Integer shardingId = entry.getValue();
             long offset = metadataManager.getConsumerOffset(queueId);
-            List<String> brokers = metadataManager.getBrokerAddressList(shardingId);
-
-            int randIndex = ThreadLocalRandom.current().nextInt(0, brokers.size());
-            ConcurrentMap<String, BrokerClient> brokerClientMap
-                    = BrokerClientManager.getInstance().getBrokerClientMap();
-            BrokerClient brokerClient = brokerClientMap.get(brokers.get(randIndex));
+            BrokerClient brokerClient = metadataManager.getBrokerClient(shardingId);
 
             BrokerMessage.PullMessageRequest request = BrokerMessage.PullMessageRequest.newBuilder()
                     .setTopic(config.getTopic())
@@ -62,9 +53,8 @@ public class Consumer implements Runnable {
                     .build();
             BrokerMessage.PullMessageResponse response = brokerClient.getBrokerAPI().pullMessage(request);
             if (response == null || response.getBaseRes().getResCode() != BrokerMessage.ResCode.RES_CODE_SUCCESS) {
-                LOG.warn("pullMessage failed, topic={}, queue={}, offset={}, broker={}",
-                        request.getTopic(), request.getQueue(), request.getOffset(),
-                        brokers.get(randIndex));
+                LOG.warn("pullMessage failed, topic={}, queue={}, offset={}, shardingId={}",
+                        request.getTopic(), request.getQueue(), request.getOffset(), shardingId);
             } else {
                 LOG.info("pullMessage success, topic={}, queue={}, offset={}, size={}",
                         request.getTopic(), request.getQueue(), request.getOffset(),

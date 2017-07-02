@@ -1,12 +1,12 @@
 package com.github.wenweihu86.distmq.client.zk;
 
 import com.github.wenweihu86.distmq.client.BrokerClient;
-import com.github.wenweihu86.distmq.client.BrokerClientManager;
 import com.github.wenweihu86.distmq.client.consumer.ConsumerConfig;
 import com.github.wenweihu86.distmq.client.producer.ProducerConfig;
 import com.github.wenweihu86.distmq.client.utils.JsonUtil;
 import com.github.wenweihu86.rpc.client.RPCClientOptions;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -33,36 +33,39 @@ public class MetadataManager {
     private Metadata metadata;
     private boolean isProducer = false;
     private boolean isConsumer = false;
+    private RPCClientOptions rpcClientOptions;
 
     public MetadataManager(ZKConf conf) {
         this.zkConf = conf;
         if (conf instanceof ProducerConfig) {
             isProducer = true;
+            rpcClientOptions = ((ProducerConfig) conf).getRPCClientOptions();
         } else if (conf instanceof ConsumerConfig) {
             isConsumer = true;
+            rpcClientOptions = ((ConsumerConfig) conf).getRPCClientOptions();
         }
         this.metadata = new Metadata();
 
         RetryPolicy retryPolicy = new ExponentialBackoffRetry(
-                zkConf.getRetryIntervalMs(), zkConf.getRetryCount());
+                zkConf.getZKRetryIntervalMs(), zkConf.getZKRetryCount());
         this.zkClient = CuratorFrameworkFactory.builder()
-                .connectString(zkConf.getServers())
+                .connectString(zkConf.getZKServers())
                 .retryPolicy(retryPolicy)
-                .connectionTimeoutMs(zkConf.getConnectTimeoutMs())
-                .sessionTimeoutMs(zkConf.getSessionTimeoutMs())
+                .connectionTimeoutMs(zkConf.getZKConnectTimeoutMs())
+                .sessionTimeoutMs(zkConf.getZKSessionTimeoutMs())
                 .build();
         this.zkClient.start();
 
         // create path
-        String brokersPath = zkConf.getBasePath() + "/brokers";
+        String brokersPath = zkConf.getZKBasePath() + "/brokers";
         createPath(brokersPath, CreateMode.PERSISTENT);
-        String topicsPath = zkConf.getBasePath() + "/topics";
+        String topicsPath = zkConf.getZKBasePath() + "/topics";
         createPath(topicsPath, CreateMode.PERSISTENT);
         if (isConsumer) {
             ConsumerConfig consumerConfig = (ConsumerConfig) conf;
-            String consumerIdsPath = zkConf.getBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/ids";
+            String consumerIdsPath = zkConf.getZKBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/ids";
             createPath(consumerIdsPath, CreateMode.PERSISTENT);
-            String offsetsPath = zkConf.getBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/offsets";
+            String offsetsPath = zkConf.getZKBasePath() + "/consumers/" + consumerConfig.getConsumerGroup() + "/offsets";
             createPath(offsetsPath, CreateMode.PERSISTENT);
         }
     }
@@ -87,7 +90,7 @@ public class MetadataManager {
     }
 
     public void registerBroker(int shardingId, String ip, int port) {
-        String path = zkConf.getBasePath() + "/brokers/" + shardingId + "/" + ip + ":" + port;
+        String path = zkConf.getZKBasePath() + "/brokers/" + shardingId + "/" + ip + ":" + port;
         boolean success = createPath(path, CreateMode.EPHEMERAL);
         if (success) {
             LOG.info("register broker sucess, ip={}, port={}", ip, port);
@@ -98,25 +101,20 @@ public class MetadataManager {
 
     public void subscribeBroker() {
         try {
-            final String brokerParentPath = zkConf.getBasePath() + "/brokers";
+            final String brokerParentPath = zkConf.getZKBasePath() + "/brokers";
             List<String> shardings = zkClient.getChildren().forPath(brokerParentPath);
             for (String sharding : shardings) {
                 final int shardingId = Integer.valueOf(sharding);
                 final String shardingPath = brokerParentPath + "/" + sharding;
                 List<String> brokerAddressList = zkClient.getChildren().forPath(shardingPath);
-                if (isProducer || isConsumer) {
-                    RPCClientOptions rpcClientOptions = BrokerClientManager.getRpcClientOptions();
-                    for (String address : brokerAddressList) {
-                        BrokerClient brokerClient = new BrokerClient(address, rpcClientOptions);
-                        BrokerClientManager.getInstance().getBrokerClientMap().put(address, brokerClient);
+                if ((isProducer || isConsumer) && CollectionUtils.isNotEmpty(brokerAddressList)) {
+                    BrokerClient brokerClient = new BrokerClient(brokerAddressList, rpcClientOptions);
+                    BrokerClient oldBrokerClient = metadata.getBrokerMap().putIfAbsent(shardingId, brokerClient);
+                    if (oldBrokerClient != null) {
+                        oldBrokerClient.getRpcClient().stop();
+                        String oldIpPorts = StringUtils.join(oldBrokerClient.getAddressList(), ",");
+                        metadata.getBrokerMap().get(shardingId).getRpcClient().addEndPoints(oldIpPorts);
                     }
-                }
-
-                metadata.getBrokerLock().lock();
-                try {
-                    metadata.getBrokerMap().put(shardingId, brokerAddressList);
-                } finally {
-                    metadata.getBrokerLock().unlock();
                 }
 
                 // 监听broker分片变化
@@ -137,7 +135,7 @@ public class MetadataManager {
     public synchronized void registerTopic(String topic, int queueNum) {
         List<Integer> shardingIds = metadata.getBrokerShardingIds();
         int shardingNum = shardingIds.size();
-        String topicPath = zkConf.getBasePath() + "/topics/" + topic;
+        String topicPath = zkConf.getZKBasePath() + "/topics/" + topic;
         for (int queueId = 0; queueId < queueNum; queueId++) {
             int index = queueId % shardingNum;
             int shardingId = shardingIds.get(index);
@@ -155,7 +153,7 @@ public class MetadataManager {
 
     public Map<Integer, Integer> readTopic(String topic) {
         Map<Integer, Integer> queueMap = new HashMap<>();
-        String path = zkConf.getBasePath() + "/topics/" + topic;
+        String path = zkConf.getZKBasePath() + "/topics/" + topic;
         try {
             List<String> queues = zkClient.getChildren().forPath(path);
             for (String queue : queues) {
@@ -174,7 +172,7 @@ public class MetadataManager {
     }
 
     public void subscribeTopic() {
-        String topicParentPath = zkConf.getBasePath() + "/topics";
+        String topicParentPath = zkConf.getZKBasePath() + "/topics";
         try {
             List<String> topics = zkClient.getChildren().forPath(topicParentPath);
             for (String topic : topics) {
@@ -193,7 +191,7 @@ public class MetadataManager {
     }
 
     public boolean registerConsumer(String consumerGroup, String consumerId) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids/" + consumerId;
+        String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/ids/" + consumerId;
         boolean success = createPath(path, CreateMode.EPHEMERAL);
         if (success) {
             LOG.info("registerConsumer sucess, consumerGroup={}, consumerId={}", consumerGroup, consumerId);
@@ -204,7 +202,7 @@ public class MetadataManager {
     }
 
     public void updateConsumerIds(String consumerGroup) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
+        String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/ids";
         try {
             List<String> consumerIds = zkClient.getChildren().forPath(path);
             metadata.getConsumerIdsLock().lock();
@@ -219,7 +217,7 @@ public class MetadataManager {
     }
 
     public void subscribeConsumer(String consumerGroup) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
+        String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/ids";
         try {
             zkClient.getChildren()
                     .usingWatcher(new ConsumerWatcher(consumerGroup))
@@ -237,7 +235,7 @@ public class MetadataManager {
      */
     public Map<Integer, Long> readConsumerOffset(String consumerGroup, String topic) {
         Map<Integer, Long> queueOffsetMap = new HashMap<>();
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
+        String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic;
         try {
             // 从zk读取
             List<String> queues = zkClient.getChildren().forPath(path);
@@ -266,7 +264,7 @@ public class MetadataManager {
     }
 
     public void updateConsumerOffset(String consumerGroup, String topic, Integer queueId, long offset) {
-        String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic + "/" + queueId;
+        String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/offsets/" + topic + "/" + queueId;
         int maxTryCount = 2;
         int currentTryCount = 0;
         while (currentTryCount++ < maxTryCount) {
@@ -299,7 +297,7 @@ public class MetadataManager {
 
     public Map<Integer, Integer> readTopicInfo(String topic) {
         Map<Integer, Integer> queueMap = new HashMap<>();
-        String topicPath = zkConf.getBasePath() + "/topics/" + topic;
+        String topicPath = zkConf.getZKBasePath() + "/topics/" + topic;
         try {
             List<String> queues = zkClient.getChildren().forPath(topicPath);
             for (String queue : queues) {
@@ -319,8 +317,8 @@ public class MetadataManager {
         return metadata.getConsumerOffset(queueId);
     }
 
-    public List<String> getBrokerAddressList(Integer shardingId) {
-        return metadata.getBrokerAddressList(shardingId);
+    public BrokerClient getBrokerClient(Integer shardingId) {
+        return metadata.getBrokerMap().get(shardingId);
     }
 
     public boolean checkTopicExist(String topic) {
@@ -353,7 +351,7 @@ public class MetadataManager {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
-            String path = zkConf.getBasePath() + "/consumers/" + consumerGroup + "/ids";
+            String path = zkConf.getZKBasePath() + "/consumers/" + consumerGroup + "/ids";
             LOG.info("get zookeeper notification for path={}", path);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 updateConsumerIds(consumerGroup);
@@ -368,7 +366,7 @@ public class MetadataManager {
     private class BrokersWatcher implements CuratorWatcher {
         @Override
         public void process(WatchedEvent event) throws Exception {
-            String brokerPath = zkConf.getBasePath() + "/brokers";
+            String brokerPath = zkConf.getZKBasePath() + "/brokers";
             LOG.info("get zookeeper notification for path={}", brokerPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newShardings = zkClient.getChildren().forPath(brokerPath);
@@ -379,27 +377,21 @@ public class MetadataManager {
                     int shardingId = Integer.valueOf(sharding);
                     String shardingPath = brokerPath + "/" + sharding;
                     List<String> brokerAddressList = zkClient.getChildren().forPath(shardingPath);
-                    for (String address : brokerAddressList) {
-                        if (isProducer || isConsumer) {
-                            BrokerClient brokerClient = new BrokerClient(
-                                    address, BrokerClientManager.getRpcClientOptions());
-                            BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
+                    if (brokerAddressList.size() > 0) {
+                        BrokerClient brokerClient = new BrokerClient(brokerAddressList, rpcClientOptions);
+                        BrokerClient old = metadata.getBrokerMap().putIfAbsent(shardingId, brokerClient);
+                        if (old != null) {
+                            old.getRpcClient().stop();
+                            metadata.getBrokerMap().get(shardingId).addEndPoint(old.getAddressList());
                         }
                     }
-                    metadata.updateBrokerSharding(shardingId, brokerAddressList);
                     zkClient.getChildren().usingWatcher(new BrokerShardingWather(shardingId)).forPath(shardingPath);
                 }
 
                 for (String sharding : deletedShardings) {
-                    List<String> brokerList = metadata.removeBrokerSharding(Integer.valueOf(sharding));
-                    if ((isProducer || isConsumer) && CollectionUtils.isNotEmpty(brokerList)) {
-                        ConcurrentMap<String, BrokerClient> brokerClientMap
-                                = BrokerClientManager.getInstance().getBrokerClientMap();
-                        for (String address : brokerList) {
-                            BrokerClient client = brokerClientMap.get(address);
-                            client.getRpcClient().stop();
-                            brokerClientMap.remove(address);
-                        }
+                    BrokerClient old = metadata.getBrokerMap().remove(Integer.valueOf(sharding));
+                    if (old != null) {
+                        old.getRpcClient().stop();
                     }
                 }
             }
@@ -419,7 +411,7 @@ public class MetadataManager {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
-            String shardingPath = zkConf.getBasePath() + "/brokers/" + shardingId;
+            String shardingPath = zkConf.getZKBasePath() + "/brokers/" + shardingId;
             LOG.info("get zookeeper notification for path={}", shardingPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newBrokerAddressList = zkClient.getChildren().forPath(shardingPath);
@@ -428,21 +420,20 @@ public class MetadataManager {
                         = CollectionUtils.subtract(newBrokerAddressList, oldBrokerAddressList);
                 Collection<String> deletedBrokerAddressList
                         = CollectionUtils.subtract(oldBrokerAddressList, newBrokerAddressList);
-                for (String address : addedBrokerAddressList) {
-                    metadata.addShardingBrokerAddress(shardingId, address);
-                    if (isProducer || isConsumer) {
-                        BrokerClient brokerClient = new BrokerClient(
-                                address, BrokerClientManager.getRpcClientOptions());
-                        BrokerClientManager.getInstance().getBrokerClientMap().putIfAbsent(address, brokerClient);
+                if (addedBrokerAddressList.size() > 0) {
+                    if (metadata.getBrokerMap().get(shardingId) != null) {
+                        metadata.getBrokerMap().get(shardingId).addEndPoint(addedBrokerAddressList);
+                    } else {
+                        BrokerClient brokerClient = new BrokerClient(newBrokerAddressList, rpcClientOptions);
+                        BrokerClient old = metadata.getBrokerMap().putIfAbsent(shardingId, brokerClient);
+                        if (old != null) {
+                            old.getRpcClient().stop();
+                            metadata.getBrokerMap().get(shardingId).addEndPoint(old.getAddressList());
+                        }
                     }
                 }
-                for (String address : deletedBrokerAddressList) {
-                    metadata.removeShardingBrokerAddress(shardingId, address);
-                    if (isProducer || isConsumer) {
-                        BrokerClient brokerClient
-                                = BrokerClientManager.getInstance().getBrokerClientMap().remove(address);
-                        brokerClient.getRpcClient().stop();
-                    }
+                if (deletedBrokerAddressList.size() > 0) {
+                    metadata.getBrokerMap().get(shardingId).removeEndPoint(deletedBrokerAddressList);
                 }
             }
             zkClient.getChildren()
@@ -455,7 +446,7 @@ public class MetadataManager {
     private class TopicsWather implements CuratorWatcher {
         @Override
         public void process(WatchedEvent event) throws Exception {
-            String topicParentPath = zkConf.getBasePath() + "/topics";
+            String topicParentPath = zkConf.getZKBasePath() + "/topics";
             LOG.info("get zookeeper notification for path={}", topicParentPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newTopics = zkClient.getChildren().forPath(topicParentPath);
@@ -488,7 +479,7 @@ public class MetadataManager {
 
         @Override
         public void process(WatchedEvent event) throws Exception {
-            String topicPath = zkConf.getBasePath() + "/topics/" + topic;
+            String topicPath = zkConf.getZKBasePath() + "/topics/" + topic;
             LOG.info("get zookeeper notification for path={}", topicPath);
             if (event.getType() == Watcher.Event.EventType.NodeChildrenChanged) {
                 List<String> newQueues = zkClient.getChildren().forPath(topicPath);

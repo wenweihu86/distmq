@@ -51,8 +51,7 @@ public class BrokerMain {
         server.start();
         raftNode.init();
 
-        // 订阅broker和topic的变化
-        metadataManager.subscribeBroker();
+        // 订阅topic的变化
         metadataManager.subscribeTopic();
         // 等成为raft集群成员后，才能注册到zk
         while (!ConfigurationUtils.containsServer(

@@ -10,7 +10,7 @@ public class ProducerMain {
 
     public static void main(String[] args) {
         ProducerConfig config = new ProducerConfig();
-        config.setServers("127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183");
+        config.setZKServers("127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183");
         Producer producer = new Producer(config);
         String topic = "example-topic";
         for (int i = 0; i < 100; i++) {

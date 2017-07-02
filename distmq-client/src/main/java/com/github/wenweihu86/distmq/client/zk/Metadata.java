@@ -1,6 +1,10 @@
 package com.github.wenweihu86.distmq.client.zk;
 
+import com.github.wenweihu86.distmq.client.BrokerClient;
+
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -10,8 +14,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class Metadata {
     // shardingId -> broker address list
-    private Map<Integer, List<String>> brokerMap = new HashMap<>();
-    private Lock brokerLock = new ReentrantLock();
+    private ConcurrentMap<Integer, BrokerClient> brokerMap = new ConcurrentHashMap<>();
 
     // topic -> (queueId -> shardingId)
     private Map<String, Map<Integer, Integer>> topicMap = new HashMap<>();
@@ -39,76 +42,29 @@ public class Metadata {
         return offset;
     }
 
+
+
     public List<String> getBrokerAddressList(Integer shardingId) {
         List<String> result = new ArrayList<>();
-        brokerLock.lock();
-        try {
-            List<String> brokers = brokerMap.get(shardingId);
-            if (brokers != null) {
-                result.addAll(brokers);
-            }
-        } finally {
-            brokerLock.unlock();
-        }
-        return result;
-    }
-
-    public void addShardingBrokerAddress(Integer shardingId, String address) {
-        brokerLock.lock();
-        try {
-            brokerMap.get(shardingId).add(address);
-        } finally {
-            brokerLock.unlock();
-        }
-    }
-
-    public void removeShardingBrokerAddress(Integer shardingId, String address) {
-        brokerLock.lock();
-        try {
-            brokerMap.get(shardingId).remove(address);
-        } finally {
-            brokerLock.unlock();
-        }
-    }
-
-    public void updateBrokerSharding(Integer shardingId, List<String> brokerAddressList) {
-        brokerLock.lock();
-        try {
-            brokerMap.put(shardingId, brokerAddressList);
-        } finally {
-            brokerLock.unlock();
-        }
-    }
-
-    public List<String> removeBrokerSharding(Integer shardingId) {
-        brokerLock.lock();
-        try {
-            return brokerMap.remove(Integer.valueOf(shardingId));
-        } finally {
-            brokerLock.unlock();
+        BrokerClient brokerClient = brokerMap.get(shardingId);
+        if (brokerClient == null) {
+            return result;
+        } else {
+            return brokerClient.getAddressList();
         }
     }
 
     public List<String> getBrokerShardings() {
         List<String> shardings = new ArrayList<>();
-        brokerLock.lock();
-        try {
-            for (Integer shardingId : brokerMap.keySet()) {
-                shardings.add(String.valueOf(shardingId));
-            }
-        } finally {
-            brokerLock.unlock();
+        Set<Integer> shardingIdSet = brokerMap.keySet();
+        for (Integer shardingId : shardingIdSet) {
+            shardings.add(String.valueOf(shardingId));
         }
         return shardings;
     }
 
     public List<Integer> getBrokerShardingIds() {
-        brokerLock.lock();
-        try {
-            return new ArrayList<>(brokerMap.keySet());
-        } finally {
-            brokerLock.unlock();
-        }
+        return new ArrayList<>(brokerMap.keySet());
     }
 
     public List<String> getAllTopics() {
@@ -212,16 +168,8 @@ public class Metadata {
         }
     }
 
-    public Map<Integer, List<String>> getBrokerMap() {
+    public ConcurrentMap<Integer, BrokerClient> getBrokerMap() {
         return brokerMap;
-    }
-
-    public void setBrokerMap(Map<Integer, List<String>> brokerMap) {
-        this.brokerMap = brokerMap;
-    }
-
-    public Lock getBrokerLock() {
-        return brokerLock;
     }
 
     public Map<String, Map<Integer, Integer>> getTopicMap() {
@@ -255,10 +203,6 @@ public class Metadata {
 
     public Lock getConsumerIdsLock() {
         return consumerIdsLock;
-    }
-
-    public void setConsumerIdsLock(Lock consumerIdsLock) {
-        this.consumerIdsLock = consumerIdsLock;
     }
 
     public Map<Integer, Long> getConsumerOffsetMap() {
