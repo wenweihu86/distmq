@@ -106,6 +106,18 @@ public class SegmentedLog {
         }
     }
 
+    public void close() {
+        lock.lock();
+        try {
+            for (Segment segment : startOffsetSegmentMap.values()) {
+                segment.close();
+            }
+            startOffsetSegmentMap.clear();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void readSegments() {
         List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir);
         for (String fileName: fileNames) {

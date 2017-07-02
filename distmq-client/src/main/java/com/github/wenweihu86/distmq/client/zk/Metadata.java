@@ -93,7 +93,11 @@ public class Metadata {
     public void updateTopicMap(String topic, Map<Integer, Integer> queueMap) {
         topicLock.lock();
         try {
-            topicMap.put(topic, queueMap);
+            if (!topicMap.containsKey(topic)) {
+                topicMap.put(topic, queueMap);
+            } else {
+                topicMap.get(topic).putAll(queueMap);
+            }
             topicCondition.signalAll();
         } finally {
             topicLock.unlock();

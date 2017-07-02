@@ -6,9 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -77,6 +75,18 @@ public class LogManager implements Runnable {
             segmentedLog = queueMap.get(queue);
         }
         return segmentedLog;
+    }
+
+    public void close() {
+        Collection<ConcurrentMap<Integer, SegmentedLog>> queueLogs = topicLogMap.values();
+        List<SegmentedLog> allLogs = new ArrayList<>();
+        for (ConcurrentMap<Integer, SegmentedLog> queueLogMap : queueLogs) {
+            allLogs.addAll(queueLogMap.values());
+        }
+        for (SegmentedLog log : allLogs) {
+            log.close();
+        }
+        topicLogMap.clear();
     }
 
     @Override

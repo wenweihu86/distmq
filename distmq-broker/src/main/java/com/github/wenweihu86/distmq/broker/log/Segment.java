@@ -96,7 +96,11 @@ public class Segment {
             byteBuffer.putInt(messageBytes.length);
             byteBuffer.put(messageBytes);
             byteBuffer.flip();
-            int writeSize = channel.write(byteBuffer);
+            channel.position(channel.size());
+            int writeSize = 0;
+            while (byteBuffer.hasRemaining()) {
+                writeSize += channel.write(byteBuffer);
+            }
             channel.force(true);
             if (writeSize != totalSize) {
                 LOG.warn("append message failed");

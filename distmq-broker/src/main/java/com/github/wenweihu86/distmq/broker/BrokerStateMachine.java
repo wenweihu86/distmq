@@ -11,6 +11,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created by wenweihu86 on 2017/6/17.
@@ -19,6 +23,8 @@ public class BrokerStateMachine implements StateMachine {
     private static final Logger LOG = LoggerFactory.getLogger(BrokerStateMachine.class);
     private String messageDir;
     private LogManager logManager;
+    // 状态机数据是否可用，当在read snapshot时，状态机数据不可用，主要发生在每次install snapshot时。
+    private AtomicBoolean isAvailable = new AtomicBoolean(true);
 
     public BrokerStateMachine() {
         String dataDir = GlobalConf.getInstance().getDataDir();
@@ -27,7 +33,7 @@ public class BrokerStateMachine implements StateMachine {
 
     @Override
     public void writeSnapshot(String snapshotDir) {
-        // TODO:改成硬链接形式，提升速度和节省空间
+        // 采用软链接形式，提升速度和节省空间
         try {
             File messageDirFile = new File(messageDir);
             File snapshotDirFile = new File(snapshotDir);
@@ -35,41 +41,55 @@ public class BrokerStateMachine implements StateMachine {
                 FileUtils.deleteDirectory(snapshotDirFile);
             }
             if (messageDirFile.exists()) {
-                FileUtils.copyDirectory(messageDirFile, snapshotDirFile);
+                Path link = FileSystems.getDefault().getPath(snapshotDir);
+                Path target = FileSystems.getDefault().getPath(messageDir);
+                Files.createSymbolicLink(link, target);
             }
         } catch (IOException ex) {
-            LOG.warn("snapshot failed");
+            LOG.warn("write snapshot failed, exception:", ex);
         }
     }
 
     @Override
     public void readSnapshot(String snapshotDir) {
         try {
-            File mqDirFile = new File(messageDir);
-            if (mqDirFile.exists()) {
-                FileUtils.deleteDirectory(mqDirFile);
-            }
-            File snapshotDirFile = new File(snapshotDir);
-            if (snapshotDirFile.exists()) {
-                FileUtils.copyDirectory(snapshotDirFile, mqDirFile);
+            isAvailable.compareAndSet(true, false);
+            Path link = FileSystems.getDefault().getPath(snapshotDir);
+            if (!Files.isSymbolicLink(link)) {
+                // 非符号链接，表示从leader节点同步拷贝的
+                if (logManager != null) {
+                    logManager.close();
+                }
+                File messageDirFile = new File(messageDir);
+                if (messageDirFile.exists()) {
+                    FileUtils.deleteDirectory(messageDirFile);
+                }
+                File snapshotDirFile = new File(snapshotDir);
+                if (snapshotDirFile.exists()) {
+                    FileUtils.copyDirectory(snapshotDirFile, messageDirFile);
+                }
             }
             logManager = new LogManager(messageDir);
         } catch (IOException ex) {
-            LOG.error("readSnapshot error");
+            LOG.error("readSnapshot exception:", ex);
             throw new RuntimeException(ex);
+        } finally {
+            isAvailable.compareAndSet(false,  true);
         }
     }
 
     @Override
     public void apply(byte[] dataBytes) {
         try {
-            BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.parseFrom(dataBytes);
-            BrokerMessage.MessageContent.Builder message = BrokerMessage.MessageContent.newBuilder()
-                    .setTopic(request.getTopic())
-                    .setQueue(request.getQueue())
-                    .setContent(request.getContent());
-            SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
-            segmentedLog.append(message);
+            if (isAvailable.get()) {
+                BrokerMessage.SendMessageRequest request = BrokerMessage.SendMessageRequest.parseFrom(dataBytes);
+                BrokerMessage.MessageContent.Builder message = BrokerMessage.MessageContent.newBuilder()
+                        .setTopic(request.getTopic())
+                        .setQueue(request.getQueue())
+                        .setContent(request.getContent());
+                SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
+                segmentedLog.append(message);
+            }
         } catch (Exception ex) {
             LOG.warn("apply exception:", ex);
         }
@@ -77,6 +97,13 @@ public class BrokerStateMachine implements StateMachine {
 
     public BrokerMessage.PullMessageResponse pullMessage(BrokerMessage.PullMessageRequest request) {
         BrokerMessage.PullMessageResponse.Builder responseBuilder = BrokerMessage.PullMessageResponse.newBuilder();
+        BrokerMessage.BaseResponse.Builder baseResBuilder = BrokerMessage.BaseResponse.newBuilder();
+        if (!isAvailable.get()) {
+            baseResBuilder.setResCode(BrokerMessage.ResCode.RES_CODE_FAIL);
+            baseResBuilder.setResMsg("state machine is busy");
+            responseBuilder.setBaseRes(baseResBuilder);
+            return responseBuilder.build();
+        }
         SegmentedLog segmentedLog = logManager.getOrCreateQueueLog(request.getTopic(), request.getQueue());
         int readCount = 0;
         long offset = request.getOffset();
@@ -89,6 +116,9 @@ public class BrokerStateMachine implements StateMachine {
             offset = message.getOffset() + message.getSize();
             readCount++;
         }
+
+        baseResBuilder.setResCode(BrokerMessage.ResCode.RES_CODE_SUCCESS);
+        responseBuilder.setBaseRes(baseResBuilder);
         return responseBuilder.build();
     }
 

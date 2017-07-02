@@ -26,4 +26,4 @@ JAVA_OPTS=" $JAVA_BASE_OPTS $JAVA_MEM_OPTS $JAVA_JMX_OPTS $JAVA_GC_OPTS $JAVA_CP
 
 RUNJAVA="$JAVA_HOME/bin/java"
 
-$RUNJAVA $JAVA_CP com.github.wenweihu86.distmq.broker.BrokerMain
+$RUNJAVA $JAVA_OPTS $JAVA_CP com.github.wenweihu86.distmq.broker.BrokerMain
