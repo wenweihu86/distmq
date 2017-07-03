@@ -78,6 +78,11 @@ public class Segment {
         String fullFileName = dirName + File.separator + fileName;
         File file = new File(fullFileName);
         file.delete();
+        try {
+            FileUtils.forceDelete(file);
+        } catch (IOException ex) {
+            LOG.warn("delete file exception:", ex);
+        }
     }
 
     public boolean append(BrokerMessage.MessageContent.Builder messageBuilder) {

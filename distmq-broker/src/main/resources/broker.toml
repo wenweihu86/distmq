@@ -1,8 +1,7 @@
 data_dir = "./data"
-default_queue_num_per_topic = 8
-max_segment_size = 100000000 # 100m
-expired_log_check_interval = 86400 # 24h
-expired_log_duration = 604800 # 7 day
+max_segment_size = 1000000 # 1m, just for debug
+expired_log_check_interval = 30 # 30s, just for debug
+expired_log_duration = 60 # 60s, just for test
 # 该server属于哪个分片集群，每个分片是leader/followers的raft集群
 sharding_id = 1
 

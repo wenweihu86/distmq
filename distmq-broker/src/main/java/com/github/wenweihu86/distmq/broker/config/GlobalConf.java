@@ -22,7 +22,6 @@ public class GlobalConf {
     RaftMessage.Server localServer; // 本机节点
     List<RaftMessage.Server> servers; // 集群所有节点
     private String dataDir; // 数据目录
-    private int defaultQueueNumPerTopic; // 每个topic的默认queue个数
     private int maxSegmentSize; // 单个segment文件最大大小
     private int expiredLogCheckInterval; // log检查时间间隔
     private int expiredLogDuration; // log过期时长
@@ -37,7 +36,6 @@ public class GlobalConf {
         localServer = readLocalServer();
         servers = readServers();
         dataDir = toml.getString("data_dir");
-        defaultQueueNumPerTopic = toml.getLong("default_queue_num_per_topic").intValue();
         maxSegmentSize = toml.getLong("max_segment_size").intValue();
         shardingId = toml.getLong("sharding_id").intValue();
         expiredLogCheckInterval = toml.getLong("expired_log_check_interval").intValue();
@@ -105,10 +103,6 @@ public class GlobalConf {
 
     public String getDataDir() {
         return dataDir;
-    }
-
-    public int getDefaultQueueNumPerTopic() {
-        return defaultQueueNumPerTopic;
     }
 
     public int getMaxSegmentSize() {

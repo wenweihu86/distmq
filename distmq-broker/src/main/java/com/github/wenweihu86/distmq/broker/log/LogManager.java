@@ -1,5 +1,6 @@
 package com.github.wenweihu86.distmq.broker.log;
 
+import com.github.wenweihu86.distmq.broker.BrokerStateMachine;
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import org.slf4j.Logger;
@@ -18,8 +19,10 @@ public class LogManager implements Runnable {
     // topic -> (queueId -> segment log)
     private ConcurrentMap<String, ConcurrentMap<Integer, SegmentedLog>> topicLogMap;
     private ScheduledExecutorService timer = Executors.newScheduledThreadPool(1);
+    private BrokerStateMachine stateMachine;
 
-    public LogManager(String logDir) {
+    public LogManager(String logDir, BrokerStateMachine stateMachine) {
+        this.stateMachine = stateMachine;
         this.topicLogMap = new ConcurrentHashMap<>();
         this.logDir = logDir;
         File dirFile = new File(logDir);
@@ -54,7 +57,7 @@ public class LogManager implements Runnable {
             }
         }
 
-        timer.scheduleAtFixedRate(this,
+        timer.scheduleWithFixedDelay(this,
                 GlobalConf.getInstance().getExpiredLogCheckInterval(),
                 GlobalConf.getInstance().getExpiredLogCheckInterval(),
                 TimeUnit.SECONDS);
@@ -89,48 +92,62 @@ public class LogManager implements Runnable {
         topicLogMap.clear();
     }
 
+    // 清理过期消息期间，禁止进行snapshot；
+    // 清理完过期消息后，需要重新执行take snapshot
     @Override
     public void run() {
-        GlobalConf conf = GlobalConf.getInstance();
-        Set<String> topicSet = topicLogMap.keySet();
-        for (String topic : topicSet) {
-            ConcurrentMap<Integer, SegmentedLog> queueLogMap = topicLogMap.get(topic);
-            if (queueLogMap != null) {
-                Set<Integer> queueSet = queueLogMap.keySet();
-                for (Integer queue : queueSet) {
-                    try {
-                        SegmentedLog log = topicLogMap.get(topic).get(queue);
-                        log.getLock().lock();
+        if (!stateMachine.getRaftNode().getSnapshot().getIsInSnapshot().compareAndSet(false, true)) {
+            LOG.info("state machine is busy");
+            return;
+        }
+        LOG.info("start to clear expired messages");
+        try {
+            GlobalConf conf = GlobalConf.getInstance();
+            Set<String> topicSet = topicLogMap.keySet();
+            for (String topic : topicSet) {
+                ConcurrentMap<Integer, SegmentedLog> queueLogMap = topicLogMap.get(topic);
+                if (queueLogMap != null) {
+                    Set<Integer> queueSet = queueLogMap.keySet();
+                    for (Integer queue : queueSet) {
                         try {
-                            Segment lastSegment = null;
-                            Iterator<Map.Entry<Long, Segment>> iterator
-                                    = log.getStartOffsetSegmentMap().entrySet().iterator();
-                            while (iterator.hasNext()){
-                                Segment segment = iterator.next().getValue();
-                                if (lastSegment == null) {
+                            SegmentedLog log = topicLogMap.get(topic).get(queue);
+                            log.getLock().lock();
+                            try {
+                                Segment lastSegment = null;
+                                Iterator<Map.Entry<Long, Segment>> iterator
+                                        = log.getStartOffsetSegmentMap().entrySet().iterator();
+                                while (iterator.hasNext()) {
+                                    Segment segment = iterator.next().getValue();
+                                    if (lastSegment == null) {
+                                        lastSegment = segment;
+                                        continue;
+                                    }
+                                    BrokerMessage.MessageContent message = segment.read(segment.getStartOffset());
+                                    if (System.currentTimeMillis() / 1000
+                                            - message.getCreateTime() / 1000
+                                            > conf.getExpiredLogDuration()) {
+                                        lastSegment.delete();
+                                        iterator.remove();
+                                    } else {
+                                        break;
+                                    }
                                     lastSegment = segment;
-                                    continue;
                                 }
-                                BrokerMessage.MessageContent message = segment.read(segment.getStartOffset());
-                                if (System.currentTimeMillis() / 1000
-                                        - message.getCreateTime() / 1000
-                                        > conf.getExpiredLogDuration()) {
-                                    lastSegment.delete();
-                                    iterator.remove();
-                                } else {
-                                    break;
-                                }
-                                lastSegment = segment;
+                            } finally {
+                                log.getLock().unlock();
                             }
-                        } finally {
-                            log.getLock().unlock();
+                        } catch (Exception ex) {
+                            LOG.warn("clear expired log error");
                         }
-                    } catch (Exception ex) {
-                        LOG.warn("clear expired log error");
                     }
                 }
             }
+        } finally {
+            stateMachine.getRaftNode().getSnapshot().getIsInSnapshot().compareAndSet(true, false);
         }
+        LOG.info("end to clear expired messages");
+
+        stateMachine.getRaftNode().takeSnapshot();
     }
 
 }

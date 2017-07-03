@@ -1,15 +1,20 @@
 package com.github.wenweihu86.distmq.broker.log;
 
+import com.github.wenweihu86.distmq.broker.BrokerStateMachine;
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
+import com.github.wenweihu86.raft.RaftNode;
+import com.github.wenweihu86.raft.storage.Snapshot;
 import com.google.protobuf.ByteString;
 import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created by wenweihu86 on 2017/6/26.
@@ -26,10 +31,19 @@ public class TestLogManager {
 
     @Test
     public void testClearExpiredLog() {
+        // mock
+        Snapshot snapshot = Mockito.mock(Snapshot.class);
+        Mockito.when(snapshot.getIsInSnapshot()).thenReturn(new AtomicBoolean(false));
+        RaftNode raftNode = Mockito.mock(RaftNode.class);
+        Mockito.when(raftNode.getSnapshot()).thenReturn(snapshot);
+        Mockito.doNothing().when(raftNode).takeSnapshot();
+        BrokerStateMachine stateMachine = new BrokerStateMachine();
+        stateMachine.setRaftNode(raftNode);
+
         GlobalConf conf = GlobalConf.getInstance();
         conf.setMaxSegmentSize(128);
         conf.setExpiredLogDuration(1);
-        LogManager logManager = new LogManager(conf.getDataDir());
+        LogManager logManager = new LogManager(conf.getDataDir(), stateMachine);
         String topic = "test-topic";
         Integer queue = 0;
         SegmentedLog log = logManager.getOrCreateQueueLog(topic, queue);

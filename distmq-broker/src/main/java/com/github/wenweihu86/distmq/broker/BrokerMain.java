@@ -42,6 +42,7 @@ public class BrokerMain {
         RaftOptions.maxSegmentFileSize = 1024 * 1024;
         // 初始化RaftNode
         RaftNode raftNode = new RaftNode(servers, localServer, stateMachine);
+        stateMachine.setRaftNode(raftNode);
         // 注册Raft节点之间相互调用的服务
         RaftConsensusService raftConsensusService = new RaftConsensusServiceImpl(raftNode);
         server.registerService(raftConsensusService);

@@ -4,6 +4,7 @@ import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.broker.log.LogManager;
 import com.github.wenweihu86.distmq.broker.log.SegmentedLog;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
+import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.StateMachine;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -25,6 +26,7 @@ public class BrokerStateMachine implements StateMachine {
     private LogManager logManager;
     // 状态机数据是否可用，当在read snapshot时，状态机数据不可用，主要发生在每次install snapshot时。
     private AtomicBoolean isAvailable = new AtomicBoolean(true);
+    private RaftNode raftNode;
 
     public BrokerStateMachine() {
         String dataDir = GlobalConf.getInstance().getDataDir();
@@ -42,7 +44,7 @@ public class BrokerStateMachine implements StateMachine {
             }
             if (messageDirFile.exists()) {
                 Path link = FileSystems.getDefault().getPath(snapshotDir);
-                Path target = FileSystems.getDefault().getPath(messageDir);
+                Path target = FileSystems.getDefault().getPath(messageDir).toRealPath();
                 Files.createSymbolicLink(link, target);
             }
         } catch (IOException ex) {
@@ -69,7 +71,7 @@ public class BrokerStateMachine implements StateMachine {
                     FileUtils.copyDirectory(snapshotDirFile, messageDirFile);
                 }
             }
-            logManager = new LogManager(messageDir);
+            logManager = new LogManager(messageDir, this);
         } catch (IOException ex) {
             LOG.error("readSnapshot exception:", ex);
             throw new RuntimeException(ex);
@@ -122,4 +124,11 @@ public class BrokerStateMachine implements StateMachine {
         return responseBuilder.build();
     }
 
+    public RaftNode getRaftNode() {
+        return raftNode;
+    }
+
+    public void setRaftNode(RaftNode raftNode) {
+        this.raftNode = raftNode;
+    }
 }
