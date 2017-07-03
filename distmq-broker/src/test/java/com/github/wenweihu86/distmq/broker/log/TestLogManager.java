@@ -33,7 +33,8 @@ public class TestLogManager {
     public void testClearExpiredLog() {
         // mock
         Snapshot snapshot = Mockito.mock(Snapshot.class);
-        Mockito.when(snapshot.getIsInSnapshot()).thenReturn(new AtomicBoolean(false));
+        Mockito.when(snapshot.getIsInstallSnapshot()).thenReturn(new AtomicBoolean(false));
+        Mockito.when(snapshot.getIsTakeSnapshot()).thenReturn(new AtomicBoolean(false));
         RaftNode raftNode = Mockito.mock(RaftNode.class);
         Mockito.when(raftNode.getSnapshot()).thenReturn(snapshot);
         Mockito.doNothing().when(raftNode).takeSnapshot();

@@ -96,8 +96,12 @@ public class LogManager implements Runnable {
     // 清理完过期消息后，需要重新执行take snapshot
     @Override
     public void run() {
-        if (!stateMachine.getRaftNode().getSnapshot().getIsInSnapshot().compareAndSet(false, true)) {
-            LOG.info("state machine is busy");
+        if (stateMachine.getRaftNode().getSnapshot().getIsInstallSnapshot().get()) {
+            LOG.info("already in install snapshot, please clear expired messages later");
+            return;
+        }
+        if (!stateMachine.getRaftNode().getSnapshot().getIsTakeSnapshot().compareAndSet(false, true)) {
+            LOG.info("already in take snapshot, please clear expired messages later");
             return;
         }
         LOG.info("start to clear expired messages");
@@ -143,7 +147,7 @@ public class LogManager implements Runnable {
                 }
             }
         } finally {
-            stateMachine.getRaftNode().getSnapshot().getIsInSnapshot().compareAndSet(true, false);
+            stateMachine.getRaftNode().getSnapshot().getIsTakeSnapshot().compareAndSet(true, false);
         }
         LOG.info("end to clear expired messages");
 

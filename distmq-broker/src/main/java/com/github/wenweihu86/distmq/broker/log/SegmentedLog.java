@@ -119,10 +119,15 @@ public class SegmentedLog {
     }
 
     private void readSegments() {
-        List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir);
-        for (String fileName: fileNames) {
-            Segment segment = new Segment(segmentDir, fileName);
-            startOffsetSegmentMap.put(segment.getStartOffset(), segment);
+        try {
+            List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir, segmentDir);
+            for (String fileName : fileNames) {
+                Segment segment = new Segment(segmentDir, fileName);
+                startOffsetSegmentMap.put(segment.getStartOffset(), segment);
+            }
+        } catch (IOException ex) {
+            LOG.warn("read segments exception:", ex);
+            throw new RuntimeException("read segments exception", ex);
         }
     }
 
