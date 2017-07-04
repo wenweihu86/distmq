@@ -77,7 +77,6 @@ public class Segment {
         close();
         String fullFileName = dirName + File.separator + fileName;
         File file = new File(fullFileName);
-        file.delete();
         try {
             FileUtils.forceDelete(file);
         } catch (IOException ex) {

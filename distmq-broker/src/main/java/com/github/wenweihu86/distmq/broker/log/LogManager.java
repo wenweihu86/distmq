@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -21,7 +22,7 @@ public class LogManager implements Runnable {
     private ScheduledExecutorService timer = Executors.newScheduledThreadPool(1);
     private BrokerStateMachine stateMachine;
 
-    public LogManager(String logDir, BrokerStateMachine stateMachine) {
+    public LogManager(String logDir, BrokerStateMachine stateMachine) throws IOException {
         this.stateMachine = stateMachine;
         this.topicLogMap = new ConcurrentHashMap<>();
         this.logDir = logDir;
@@ -49,7 +50,7 @@ public class LogManager implements Runnable {
                             continue;
                         }
                         Integer queueId = Integer.valueOf(queueDir.getName());
-                        String fullQueuePath = logDir + File.separator + topicDir + File.separator + queueDir;
+                        String fullQueuePath = queueDir.getCanonicalPath();
                         SegmentedLog queueLog = new SegmentedLog(fullQueuePath);
                         queueMap.put(queueId, queueLog);
                     }
@@ -117,6 +118,7 @@ public class LogManager implements Runnable {
                             SegmentedLog log = topicLogMap.get(topic).get(queue);
                             log.getLock().lock();
                             try {
+                                List<Long> deletedKeyList = new ArrayList<>();
                                 Segment lastSegment = null;
                                 Iterator<Map.Entry<Long, Segment>> iterator
                                         = log.getStartOffsetSegmentMap().entrySet().iterator();
@@ -131,11 +133,14 @@ public class LogManager implements Runnable {
                                             - message.getCreateTime() / 1000
                                             > conf.getExpiredLogDuration()) {
                                         lastSegment.delete();
-                                        iterator.remove();
+                                        deletedKeyList.add(lastSegment.getStartOffset());
                                     } else {
                                         break;
                                     }
                                     lastSegment = segment;
+                                }
+                                for (Long startOffset : deletedKeyList) {
+                                    log.getStartOffsetSegmentMap().remove(startOffset);
                                 }
                             } finally {
                                 log.getLock().unlock();

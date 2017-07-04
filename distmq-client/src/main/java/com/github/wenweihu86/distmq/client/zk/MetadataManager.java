@@ -308,7 +308,7 @@ public class MetadataManager {
                 queueMap.put(queueId, shardingId);
             }
         } catch (Exception ex) {
-            LOG.info("readTopic failed, exception:", ex);
+            LOG.warn("readTopic failed, exception:", ex);
         }
         return queueMap;
     }

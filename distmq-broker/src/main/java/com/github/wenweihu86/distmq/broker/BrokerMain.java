@@ -13,6 +13,7 @@ import com.github.wenweihu86.raft.service.impl.RaftConsensusServiceImpl;
 import com.github.wenweihu86.raft.util.ConfigurationUtils;
 import com.github.wenweihu86.rpc.server.RPCServer;
 
+import java.io.File;
 import java.util.List;
 
 /**
@@ -24,7 +25,7 @@ public class BrokerMain {
         GlobalConf conf = GlobalConf.getInstance();
         RaftMessage.Server localServer = conf.getLocalServer();
         List<RaftMessage.Server> servers = conf.getServers();
-        String dataDir = conf.getDataDir();
+        String dataDir = System.getProperty("user.dir") + File.separator + conf.getDataDir();
 
         // 初始化zookeeper
         ZKConf zkConf = conf.getZkConf();
@@ -33,7 +34,7 @@ public class BrokerMain {
         // 初始化RPCServer
         RPCServer server = new RPCServer(localServer.getEndPoint().getPort());
         // 应用状态机
-        BrokerStateMachine stateMachine = new BrokerStateMachine();
+        BrokerStateMachine stateMachine = new BrokerStateMachine(dataDir);
         // 设置数据目录
         RaftOptions.dataDir = dataDir;
         // just for test snapshot

@@ -30,7 +30,11 @@ public class TestLogManager {
     }
 
     @Test
-    public void testClearExpiredLog() {
+    public void testClearExpiredLog() throws IOException {
+        GlobalConf conf = GlobalConf.getInstance();
+        conf.setMaxSegmentSize(128);
+        conf.setExpiredLogDuration(1);
+
         // mock
         Snapshot snapshot = Mockito.mock(Snapshot.class);
         Mockito.when(snapshot.getIsInstallSnapshot()).thenReturn(new AtomicBoolean(false));
@@ -38,12 +42,9 @@ public class TestLogManager {
         RaftNode raftNode = Mockito.mock(RaftNode.class);
         Mockito.when(raftNode.getSnapshot()).thenReturn(snapshot);
         Mockito.doNothing().when(raftNode).takeSnapshot();
-        BrokerStateMachine stateMachine = new BrokerStateMachine();
+        BrokerStateMachine stateMachine = new BrokerStateMachine(conf.getDataDir());
         stateMachine.setRaftNode(raftNode);
 
-        GlobalConf conf = GlobalConf.getInstance();
-        conf.setMaxSegmentSize(128);
-        conf.setExpiredLogDuration(1);
         LogManager logManager = new LogManager(conf.getDataDir(), stateMachine);
         String topic = "test-topic";
         Integer queue = 0;

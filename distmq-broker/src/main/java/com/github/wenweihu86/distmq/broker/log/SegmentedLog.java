@@ -3,6 +3,7 @@ package com.github.wenweihu86.distmq.broker.log;
 import com.github.wenweihu86.distmq.broker.config.GlobalConf;
 import com.github.wenweihu86.distmq.client.api.BrokerMessage;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,10 +57,9 @@ public class SegmentedLog {
                                 lastSegment.getStartOffset(), lastSegment.getEndOffset());
                         String newFullFileName = segmentDir + File.separator + newFileName;
                         File newFile = new File(newFullFileName);
-                        newFile.createNewFile();
                         String oldFullFileName = segmentDir + File.separator + lastSegment.getFileName();
                         File oldFile = new File(oldFullFileName);
-                        oldFile.renameTo(newFile);
+                        FileUtils.moveFile(oldFile, newFile);
                         lastSegment.setFileName(newFileName);
                         lastSegment.setRandomAccessFile(RaftFileUtils.openFile(segmentDir, newFileName, "r"));
                         lastSegment.setChannel(lastSegment.getRandomAccessFile().getChannel());
@@ -94,6 +94,12 @@ public class SegmentedLog {
     public BrokerMessage.MessageContent read(long offset) {
         lock.lock();
         try {
+            if (startOffsetSegmentMap.size() > 0) {
+                long firstOffset = startOffsetSegmentMap.firstKey();
+                if (offset < firstOffset) {
+                    offset = firstOffset;
+                }
+            }
             Map.Entry<Long, Segment> entry = startOffsetSegmentMap.floorEntry(offset);
             if (entry == null) {
                 LOG.warn("message not found, offset={}", offset);
@@ -122,6 +128,7 @@ public class SegmentedLog {
         try {
             List<String> fileNames = RaftFileUtils.getSortedFilesInDirectory(segmentDir, segmentDir);
             for (String fileName : fileNames) {
+                LOG.info("read segment filename={}", fileName);
                 Segment segment = new Segment(segmentDir, fileName);
                 startOffsetSegmentMap.put(segment.getStartOffset(), segment);
             }

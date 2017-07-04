@@ -28,8 +28,7 @@ public class BrokerStateMachine implements StateMachine {
     private AtomicBoolean isAvailable = new AtomicBoolean(true);
     private RaftNode raftNode;
 
-    public BrokerStateMachine() {
-        String dataDir = GlobalConf.getInstance().getDataDir();
+    public BrokerStateMachine(String dataDir) {
         this.messageDir = dataDir + File.separator + "message";
     }
 
@@ -62,12 +61,12 @@ public class BrokerStateMachine implements StateMachine {
                 if (logManager != null) {
                     logManager.close();
                 }
-                File messageDirFile = new File(messageDir);
-                if (messageDirFile.exists()) {
-                    FileUtils.deleteDirectory(messageDirFile);
-                }
                 File snapshotDirFile = new File(snapshotDir);
-                if (snapshotDirFile.exists()) {
+                if (snapshotDirFile.exists() && snapshotDirFile.listFiles().length > 0) {
+                    File messageDirFile = new File(messageDir);
+                    if (messageDirFile.exists()) {
+                        FileUtils.deleteDirectory(messageDirFile);
+                    }
                     FileUtils.copyDirectory(snapshotDirFile, messageDirFile);
                 }
             }

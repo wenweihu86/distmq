@@ -48,24 +48,25 @@ public class BrokerAPIImpl implements BrokerAPI {
             metadataManager.updateTopicMap(request.getTopic(), queueMap);
         }
 
+        // 由producer来保证topic已经存在，broker就不再校验topic是否存在。
         // 验证queue存在，并且属于该sharding
-        boolean shardingValid = false;
-        GlobalConf conf = GlobalConf.getInstance();
-        Integer shardingId = metadataManager.getQueueSharding(request.getTopic(), request.getQueue());
-        if (shardingId != null && shardingId.equals(conf.getShardingId())) {
-            shardingValid = true;
-        }
-
-        if (!topicExist || !shardingValid) {
-            String message = "queue not exist or not be included by this sharding";
-            baseResBuilder.setResMsg(message);
-            responseBuilder.setBaseRes(baseResBuilder.build());
-            LOG.info("sendMessage request, topic={}, queue={}, resCode={}, resMsg={}",
-                    request.getTopic(), request.getQueue(),
-                    responseBuilder.getBaseRes().getResCode(),
-                    responseBuilder.getBaseRes().getResMsg());
-            return responseBuilder.build();
-        }
+//        boolean shardingValid = false;
+//        GlobalConf conf = GlobalConf.getInstance();
+//        Integer shardingId = metadataManager.getQueueSharding(request.getTopic(), request.getQueue());
+//        if (shardingId != null && shardingId.equals(conf.getShardingId())) {
+//            shardingValid = true;
+//        }
+//        if (!topicExist || !shardingValid) {
+//            String message = "queue not exist or not be included by this sharding";
+//            baseResBuilder.setResMsg(message);
+//            responseBuilder.setBaseRes(baseResBuilder.build());
+//            LOG.warn("sendMessage request, topic={}, queue={}, resCode={}, "
+//                            + "topicExist={}, shardingValid={}, resMsg={}",
+//                    request.getTopic(), request.getQueue(),
+//                    responseBuilder.getBaseRes().getResCode(),
+//                    topicExist, shardingValid, responseBuilder.getBaseRes().getResMsg());
+//            return responseBuilder.build();
+//        }
 
         // 如果自己不是leader，将写请求转发给leader
         if (raftNode.getLeaderId() <= 0) {
