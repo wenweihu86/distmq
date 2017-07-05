@@ -8,6 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -76,7 +79,8 @@ public class SegmentedLog {
                 String newFullFileName = segmentDir + File.separator + newSegmentFileName;
                 File newSegmentFile = new File(newFullFileName);
                 if (!newSegmentFile.exists()) {
-                    newSegmentFile.createNewFile();
+                    Path path = FileSystems.getDefault().getPath(newFullFileName);
+                    Files.createFile(path);
                 }
                 newSegment = new Segment(segmentDir, newSegmentFileName);
                 startOffsetSegmentMap.put(newSegment.getStartOffset(), newSegment);
@@ -85,7 +89,7 @@ public class SegmentedLog {
             }
             return newSegment.append(message);
         } catch (IOException ex) {
-            throw new RuntimeException("meet exception, msg=" + ex.getMessage());
+            throw new RuntimeException("append message log exception, msg=" + ex.getMessage());
         } finally {
             lock.unlock();
         }

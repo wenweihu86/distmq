@@ -12,6 +12,9 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * queue中每个文件用segment表示
@@ -53,6 +56,11 @@ public class Segment {
                     LOG.error("invalid segment file name:{}", fileName);
                     throw new RuntimeException("invalid segmentDir=" + dirName);
                 }
+            }
+            File file = new File(dirName + File.separator + fileName);
+            if (!file.exists()) {
+                Path path = FileSystems.getDefault().getPath(dirName, fileName);
+                Files.createFile(path);
             }
             this.setRandomAccessFile(RaftFileUtils.openFile(dirName, fileName, "rw"));
             this.setChannel(this.randomAccessFile.getChannel());

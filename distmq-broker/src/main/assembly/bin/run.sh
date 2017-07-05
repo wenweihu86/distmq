@@ -1,5 +1,6 @@
 #!/bin/bash
 
+ulimit -n 65535
 JMX_PORT=18501
 GC_LOG=./logs/gc.log
 #jvm config

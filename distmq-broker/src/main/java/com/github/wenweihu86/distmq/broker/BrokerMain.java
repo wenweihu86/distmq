@@ -37,10 +37,10 @@ public class BrokerMain {
         BrokerStateMachine stateMachine = new BrokerStateMachine(dataDir);
         // 设置数据目录
         RaftOptions.dataDir = dataDir;
-        // just for test snapshot
-        RaftOptions.snapshotMinLogSize = 10 * 1024;
-        RaftOptions.snapshotPeriodSeconds = 30;
-        RaftOptions.maxSegmentFileSize = 1024 * 1024;
+//        // just for test snapshot
+//        RaftOptions.snapshotMinLogSize = 10 * 1024;
+//        RaftOptions.snapshotPeriodSeconds = 30;
+//        RaftOptions.maxSegmentFileSize = 1024 * 1024;
         // 初始化RaftNode
         RaftNode raftNode = new RaftNode(servers, localServer, stateMachine);
         stateMachine.setRaftNode(raftNode);
