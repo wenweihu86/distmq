@@ -36,13 +36,14 @@ public class BrokerMain {
         // 应用状态机
         BrokerStateMachine stateMachine = new BrokerStateMachine(dataDir);
         // 设置数据目录
-        RaftOptions.dataDir = dataDir;
+        RaftOptions raftOptions = new RaftOptions();
+        raftOptions.setDataDir(dataDir);
 //        // just for test snapshot
 //        RaftOptions.snapshotMinLogSize = 10 * 1024;
 //        RaftOptions.snapshotPeriodSeconds = 30;
 //        RaftOptions.maxSegmentFileSize = 1024 * 1024;
         // 初始化RaftNode
-        RaftNode raftNode = new RaftNode(servers, localServer, stateMachine);
+        RaftNode raftNode = new RaftNode(raftOptions, servers, localServer, stateMachine);
         stateMachine.setRaftNode(raftNode);
         // 注册Raft节点之间相互调用的服务
         RaftConsensusService raftConsensusService = new RaftConsensusServiceImpl(raftNode);
