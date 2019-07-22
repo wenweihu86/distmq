@@ -1,67 +1,48 @@
 package com.github.wenweihu86.distmq.client.utils;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.*;
 
-import java.io.IOException;
+import java.lang.reflect.Type;
 
 public class JsonUtil {
 
-    private static ObjectMapper objectMapper = new ObjectMapper();
+    private static Gson gson;
 
     static {
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        gson = getGB().setDateFormat("yyyy-MM-dd HH:mm:ss").disableHtmlEscaping().create();
     }
 
-    public static JsonNode readTree(String jsonString) {
-        JsonNode node = null;
-        try {
-            node = objectMapper.readTree(jsonString);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return node;
+    private static GsonBuilder getGB() {
+        return new GsonBuilder();
     }
 
-    public static <T> String toJson(T object) {
-        String s = "";
-        try {
-            s = objectMapper.writeValueAsString(object);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-        return s;
+    public static <T> T fromJson(String json, Class<T> classOfT) {
+        return gson.fromJson(json, classOfT);
     }
 
-    public static String toJson(JsonNode node) {
-        String s = "";
-        try {
-            s = objectMapper.writeValueAsString(node);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-        return s;
+    public static <T> T fromJson(String json, Type typeOfT) {
+        return gson.fromJson(json, typeOfT);
     }
 
-    public static <T> T fromJson(String jsonString, TypeReference<T> tr) {
-        try {
-            return (T) objectMapper.readValue(jsonString, tr);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return null;
+    public static String toJson(Object o) {
+        return gson.toJson(o);
     }
 
-    public static <T> T fromJson(String jsonString, Class<T> classOfT) {
+    public static String toPrettyPrintJson(Object o) {
+        return getGB().setPrettyPrinting().create().toJson(o);
+    }
+
+    public Boolean isValidJson(String str) {
         try {
-            return (T) objectMapper.readValue(jsonString, classOfT);
-        } catch (IOException e) {
-            e.printStackTrace();
+            gson.fromJson(str, Object.class);
+            return true;
+        } catch (JsonSyntaxException e) {
+            return false;
         }
-        return null;
+    }
+
+    public static JsonElement parseJson(String json) {
+        return new JsonParser().parse(json);
     }
 
 }
